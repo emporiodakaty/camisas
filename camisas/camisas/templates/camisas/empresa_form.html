@@ -1,0 +1,214 @@
+{% load widget_tweaks %}
+
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Empresa & Parâmetros • Camisas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    :root{--ink:#0f172a;--muted:#64748b;--ring:rgba(37,99,235,.18);--g1:#f30c80;--g2:#f30c80;--base-font:14px;}
+    html{font-size:var(--base-font);}body{background:#f6f8fb;color:var(--ink);}
+    .nav-pro{background:linear-gradient(90deg,var(--g1),var(--g2));}
+    .card{border:none;box-shadow:0 10px 24px rgba(17,24,39,.08);border-radius:.9rem;}
+    .step{display:none}.step.active{display:block}
+    .stepper .btn{font-size:.85rem}
+    .muted{color:var(--muted)}
+    .form-control:focus,.form-select:focus{box-shadow:0 0 0 .25rem var(--ring);border-color:#93c5fd}
+  </style>
+</head>
+<body>
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{% url 'camisas:empresa_list' %}">Empresas</a>
+    <div class="ms-auto"><a class="btn btn-sm btn-light" href="{% url 'camisas:empresa_list' %}">Voltar</a></div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
+
+  <div class="card p-3 bg-white">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h1 class="h6 m-0">Cadastro de Empresa</h1>
+      <div class="stepper">
+        <button class="btn btn-outline-secondary btn-sm" id="btnPrev" disabled>← Anterior</button>
+        <button class="btn btn-primary btn-sm" id="btnNext">Próximo →</button>
+      </div>
+    </div>
+
+    <form method="post" class="needs-validation" novalidate id="formEmpresa">{% csrf_token %}
+      <!-- Step 1: Empresa -->
+      <section class="step active" data-step="1">
+        <h2 class="h6">Dados da Empresa</h2>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Nome fantasia</label>
+            {{ form.nome_fantasia|add_class:"form-control" }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Razão social</label>
+            {{ form.razao_social|add_class:"form-control" }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">CNPJ</label>
+            {{ form.cnpj|add_class:"form-control" }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Inscrição Estadual</label>
+            {{ form.ie|add_class:"form-control" }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Telefone</label>
+            {{ form.telefone|add_class:"form-control" }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">E-mail</label>
+            {{ form.email|add_class:"form-control" }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Endereço</label>
+            {{ form.endereco|add_class:"form-control" }}
+          </div>
+          <div class="col-md-8">
+            <label class="form-label">Cidade</label>
+            {{ form.cidade|add_class:"form-control" }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">UF</label>
+            {{ form.uf|add_class:"form-control" }}
+          </div>
+        </div>
+        <p class="muted small mt-2">Preencha os dados legais e de contato.</p>
+      </section>
+
+      <!-- Step 2: Parâmetros -->
+      <section class="step" data-step="2">
+        <h2 class="h6">Parâmetros Financeiros</h2>
+        <div class="row g-3">
+          <!-- use data-mask="money" para moeda/percentual (ajusto no submit) -->
+          <div class="col-md-3">
+            <label class="form-label">Margem lucro padrão (%)</label>
+            {{ pform.margem_lucro_padrao|add_class:"form-control"|attr:"data-mask=percent" }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Acréscimo padrão (%)</label>
+            {{ pform.acrescimo_padrao_percentual|add_class:"form-control"|attr:"data-mask=percent" }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Desconto máx. (%)</label>
+            {{ pform.desconto_max_percentual|add_class:"form-control"|attr:"data-mask=percent" }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Impostos (%)</label>
+            {{ pform.impostos_percentual|add_class:"form-control"|attr:"data-mask=percent" }}
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Taxa cartão (%)</label>
+            {{ pform.taxa_cartao_percentual|add_class:"form-control"|attr:"data-mask=percent" }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Custo energia (R$)</label>
+            {{ pform.custo_energia_mensal|add_class:"form-control"|attr:"data-mask=money" }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Custo internet (R$)</label>
+            {{ pform.custo_internet_mensal|add_class:"form-control"|attr:"data-mask=money" }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Outros fixos (R$)</label>
+            {{ pform.outros_custos_fixos_mensais|add_class:"form-control"|attr:"data-mask=money" }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Custo tinta (%)</label>
+            {{ pform.custo_tinta_percentual|add_class:"form-control"|attr:"data-mask=percent4" }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Arredondar para (R$)</label>
+            {{ pform.arredondar_para|add_class:"form-control"|attr:"data-mask=money" }}
+          </div>
+          <div class="col-md-12 form-check mt-2">
+            {{ pform.incluir_taxas_no_preco_base }}
+            <label class="form-check-label">Incluir taxas no preço base</label>
+          </div>
+        </div>
+        <p class="muted small mt-2">Esses números influenciam preço sugerido e orçamentos.</p>
+      </section>
+
+      <div class="d-flex gap-2 mt-4">
+        <button class="btn btn-outline-secondary" type="button" id="btnCancel" onclick="history.back()">Cancelar</button>
+        <button class="btn btn-success" type="submit" id="btnSubmit" style="display:none;">Salvar</button>
+      </div>
+    </form>
+  </div>
+</main>
+
+<script>
+/* Helpers de máscara e validação */
+(function(){
+  // Stepper
+  const steps = Array.from(document.querySelectorAll('.step'));
+  const btnPrev = document.getElementById('btnPrev');
+  const btnNext = document.getElementById('btnNext');
+  const btnSubmit = document.getElementById('btnSubmit');
+  let idx = 0;
+  function renderStep(){
+    steps.forEach((s,i)=> s.classList.toggle('active', i===idx));
+    btnPrev.disabled = idx===0;
+    btnNext.style.display = (idx===steps.length-1) ? 'none':'inline-block';
+    btnSubmit.style.display = (idx===steps.length-1) ? 'inline-block':'none';
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+  btnPrev && btnPrev.addEventListener('click', ()=>{ if(idx>0){idx--; renderStep();}});
+  btnNext && btnNext.addEventListener('click', ()=>{ if(idx<steps.length-1){idx++; renderStep();}});
+  renderStep();
+
+  // Validação + máscaras
+  const form = document.getElementById('formEmpresa');
+  function unmaskMoney(s){ if(!s) return ''; return s.replace(/\./g,'').replace(',','.').replace(/[^\d.-]/g,''); }
+  function unmaskPercent(s){ return unmaskMoney(s); }
+
+  // máscara digitando (leve)
+  document.addEventListener('input', (e)=>{
+    const el = e.target;
+    if(!el.closest('form')) return;
+    const type = el.getAttribute('data-mask');
+    if(!type) return;
+    let v = el.value;
+    // Apenas permite dígitos, vírgula e ponto
+    v = v.replace(/[^\d.,-]/g,'');
+    if(type==='money'){
+      // formatação brasileira simples
+      v = v.replace(/\./g,'').replace(',', '.');
+      const num = parseFloat(v||'0');
+      if(!isNaN(num)){ el.value = num.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+    }else if(type==='percent'){
+      v = v.replace(/\./g,'').replace(',', '.');
+      const num = parseFloat(v||'');
+      if(!isNaN(num)){ el.value = num.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+    }else if(type==='percent4'){
+      v = v.replace(/\./g,'').replace(',', '.');
+      const num = parseFloat(v||'');
+      if(!isNaN(num)){ el.value = num.toLocaleString('pt-BR', {minimumFractionDigits:4, maximumFractionDigits:4}); }
+    }
+  });
+
+  // antes de enviar, converter para formato que o Django aceita
+  form && form.addEventListener('submit', (e)=>{
+    if(!form.checkValidity()){
+      e.preventDefault(); e.stopPropagation();
+      form.classList.add('was-validated');
+      // manter no step atual
+      return;
+    }
+    // normalizar campos
+    form.querySelectorAll('[data-mask="money"],[data-mask="percent"],[data-mask="percent4"]').forEach(inp=>{
+      inp.value = unmaskMoney(inp.value).replace(',', '.');
+    });
+  }, false);
+})();
+</script>
+</body>
+</html>

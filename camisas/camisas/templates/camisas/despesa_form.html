@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <title>{% if is_edit %}Editar{% else %}Nova{% endif %} Despesa • Camisas</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    :root{--ink:#0f172a;--muted:#64748b;--ring:rgba(37,99,235,.18);--base-font:14px;}
+    html{font-size:var(--base-font);} body{background:#f6f8fb;color:var(--ink);}
+    .card{border:none;box-shadow:0 10px 24px rgba(17,24,39,.08);border-radius:.9rem;}
+    .mini{font-size:.85rem;color:var(--muted)}
+    .totals{background:#fff;border:1px solid #e5e7eb;border-radius:.8rem;padding:.75rem 1rem}
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-dark" style="background:linear-gradient(90deg,#f30c80,#f30c80)">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{% url 'camisas:despesa_list' %}">Despesas</a>
+    <div class="ms-auto">
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:despesa_list' %}">Voltar</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  {% for m in messages %}<div class="alert alert-{{ m.tags }}">{{ m }}</div>{% endfor %}
+
+  <div class="card p-3 bg-white">
+    <h1 class="h6 mb-3">{% if is_edit %}Editar{% else %}Nova{% endif %} Despesa</h1>
+
+    <form method="post" enctype="multipart/form-data" id="formDesp">{% csrf_token %}
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Empresa</label>
+          {{ form.empresa }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Categoria</label>
+          {{ form.categoria }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Fornecedor</label>
+          {{ form.fornecedor }}
+        </div>
+
+        <div class="col-md-8">
+          <label class="form-label">Descrição</label>
+          {{ form.descricao }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Valor total (R$)</label>
+          {{ form.valor_total }}
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Emissão</label>
+          {{ form.data_emissao }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Vencimento</label>
+          {{ form.vencimento }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Forma de pagamento</label>
+          {{ form.forma_pagamento }}
+        </div>
+
+        <div class="col-md-8">
+          <label class="form-label">Observação</label>
+          {{ form.observacao }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Anexo (opcional)</label>
+          {{ form.anexo }}
+          {% if is_edit and despesa and despesa.anexo_has_file %}
+            <div class="mini mt-1">Atual: <a href="{{ despesa.anexo_url_safe }}" target="_blank" rel="noopener">{{ despesa.anexo.name }}</a></div>
+          {% endif %}
+        </div>
+      </div>
+
+      <hr class="my-3">
+
+      <!-- Auto-gerar parcelas (opcional) -->
+      {% if not is_edit %}
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Parcelas (auto)</label>
+          {{ form.parcelas_qty }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">1º vencimento</label>
+          {{ form.primeira_parcela }}
+        </div>
+        <div class="col-md-6 mini d-flex align-items-end">Preenche parcelas iguais após salvar. Para parcelas diferentes, salve e edite abaixo.</div>
+      </div>
+      {% endif %}
+
+      {% if is_edit %}
+        {{ formset.management_form }}
+        <h2 class="h6 mt-3">Parcelas</h2>
+        <div class="table-responsive">
+          <table class="table align-middle">
+            <thead><tr><th style="width:12%">#</th><th style="width:28%">Vencimento</th><th style="width:24%">Valor</th><th style="width:20%">Status</th><th style="width:16%"></th></tr></thead>
+            <tbody id="bodyParc">
+              {% for f in formset.forms %}
+                <tr class="row-parc">
+                  <td>{{ f.numero }}</td>
+                  <td>{{ f.vencimento }}</td>
+                  <td>{{ f.valor }}</td>
+                  <td>{{ f.status }}</td>
+                  <td class="text-end">
+                    {% if f.instance.pk and f.instance.status != 'PAGA' %}
+                      <form method="post" action="{% url 'camisas:parcela_pagar' f.instance.pk %}" style="display:inline">{% csrf_token %}
+                        <button class="btn btn-sm btn-success">Marcar paga</button>
+                      </form>
+                    {% endif %}
+                    {% if formset.can_delete %}{{ f.DELETE }}{% endif %}
+                    {{ f.id }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+
+      <div class="d-flex gap-2 mt-2">
+        <button class="btn btn-primary">Salvar</button>
+        <a class="btn btn-outline-secondary" href="{% url 'camisas:despesa_list' %}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</main>
+</body>
+</html>

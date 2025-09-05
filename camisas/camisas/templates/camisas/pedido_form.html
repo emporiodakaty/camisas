@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>{% if form.instance.pk %}Editar{% else %}Novo{% endif %} Pedido • Camisas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    :root{--ink:#0f172a;--ring:rgba(37,99,235,.18);--g1:#f30c80;--g2:#f30c80;--base-font:14px;}
+    html{font-size:var(--base-font);} body{background:#f6f8fb;color:var(--ink);}
+    .nav-pro{background:linear-gradient(90deg,var(--g1),var(--g2));}
+    .card{border:none;box-shadow:0 10px 24px rgba(17,24,39,.08);border-radius:.9rem;}
+    .form-control:focus,.form-select:focus{box-shadow:0 0 0 .25rem var(--ring);border-color:#93c5fd}
+    .muted{color:#64748b}
+    .table thead th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#64748b;border-top:0}
+    .btn-sm{font-size:.82rem}
+    .totals{background:#fff;border:1px solid #e5e7eb;border-radius:.8rem;padding:.75rem 1rem}
+  </style>
+</head>
+<body>
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{% url 'camisas:pedido_list' %}">Pedidos</a>
+    <div class="ms-auto"><a class="btn btn-sm btn-light" href="{% url 'camisas:pedido_list' %}">Voltar</a></div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
+  <div class="card p-3 bg-white">
+    <h2 class="h6 mb-3">{% if form.instance.pk %}Editar{% else %}Novo{% endif %} Pedido / Orçamento</h2>
+
+    {% load widget_tweaks %}
+    <form method="post" enctype="multipart/form-data" class="needs-validation" novalidate id="formPedido">{% csrf_token %}
+      {{ formset.management_form }}
+
+      <!-- CABEÇALHO -->
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Empresa</label>
+          {{ form.empresa|add_class:"form-select" }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Cliente</label>
+          {{ form.cliente|add_class:"form-select" }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Status</label>
+          {{ form.status|add_class:"form-select" }}
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Nº Orçamento</label>
+          {{ form.numero_orcamento|add_class:"form-control" }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Validade</label>
+          {{ form.validade|add_class:"form-control" }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Arte da camisa (imagem)</label>
+          {{ form.arte|add_class:"form-control" }}
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Desconto (%)</label>
+          {{ form.desconto_percentual|add_class:"form-control perc" }}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Acréscimo (%)</label>
+          {{ form.acrescimo_percentual|add_class:"form-control perc" }}
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Condições (pagamento, entrega, observações)</label>
+          {{ form.condicoes|add_class:"form-control" }}
+        </div>
+        <div class="col-12">
+          <label class="form-label">Observações internas</label>
+          {{ form.observacao|add_class:"form-control" }}
+        </div>
+      </div>
+
+      <!-- ITENS -->
+      <hr class="my-4">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h3 class="h6 m-0">Itens do Pedido</h3>
+        <button type="button" id="btnAddRow" class="btn btn-sm btn-outline-primary">+ Adicionar item</button>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th style="width:42%">Variação / Produto</th>
+              <th style="width:14%">Qtd</th>
+              <th style="width:18%">Preço unit. (R$)</th>
+              <th style="width:18%">Subtotal</th>
+              <th style="width:8%"></th>
+            </tr>
+          </thead>
+          <tbody id="bodyItens">
+            {% for f in formset.forms %}
+              <tr class="row-item">
+                <td>
+                  {{ f.variacao|add_class:"form-select item-variacao" }}
+                  {{ f.id }}
+                  {% if formset.can_delete %}{{ f.DELETE|add_class:"d-none del-flag" }}{% endif %}
+                </td>
+                <td>{{ f.quantidade|add_class:"form-control item-qty"|attr:"step=0.01"|attr:"min=0.01" }}</td>
+                <td>{{ f.preco_unitario|add_class:"form-control item-price"|attr:"step=0.01"|attr:"min=0" }}</td>
+                <td class="item-subtotal fw-semibold">R$ 0,00</td>
+                <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger btn-remove">Remover</button></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Template de linha (empty_form) -->
+      <template id="tplRow">
+        <tr class="row-item">
+          <td>
+            {{ formset.empty_form.variacao|add_class:"form-select item-variacao" }}
+            {{ formset.empty_form.id }}
+            {% if formset.can_delete %}{{ formset.empty_form.DELETE|add_class:"d-none del-flag" }}{% endif %}
+          </td>
+          <td>{{ formset.empty_form.quantidade|add_class:"form-control item-qty"|attr:"step=0.01"|attr:"min=0.01" }}</td>
+          <td>{{ formset.empty_form.preco_unitario|add_class:"form-control item-price"|attr:"step=0.01"|attr:"min=0" }}</td>
+          <td class="item-subtotal fw-semibold">R$ 0,00</td>
+          <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger btn-remove">Remover</button></td>
+        </tr>
+      </template>
+
+      <!-- Totais -->
+      <div class="row justify-content-end mt-3">
+        <div class="col-md-5">
+          <div class="totals">
+            <div class="d-flex justify-content-between"><span class="muted">Subtotal</span><span id="tSub">R$ 0,00</span></div>
+            <div class="d-flex justify-content-between"><span class="muted">Desconto</span><span id="tDesc">R$ 0,00</span></div>
+            <div class="d-flex justify-content-between"><span class="muted">Acréscimo</span><span id="tAcr">R$ 0,00</span></div>
+            <hr class="my-2">
+            <div class="d-flex justify-content-between fw-bold"><span>Total</span><span id="tTotal">R$ 0,00</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2 mt-3">
+        <button class="btn btn-primary">Salvar</button>
+        <a class="btn btn-outline-secondary" href="{% url 'camisas:pedido_list' %}">Cancelar</a>
+        {% if form.instance.pk %}
+          <a class="btn btn-success" href="{% url 'camisas:pedido_orcamento' form.instance.pk %}" target="_blank" rel="noopener">Ver Orçamento</a>
+        {% endif %}
+      </div>
+      <p class="muted small mt-2">Os itens são salvos junto com o pedido. Depois, gere o orçamento para o cliente.</p>
+    </form>
+  </div>
+</main>
+
+<script>
+(function(){
+  // ===== Variacoes vindas da view =====
+  const VARIACOES = {{ variacoes_json|safe }};
+
+  // utils
+  const fmtBR = v => (v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  const toNum = v => { const x=(v||'').toString().replace(/\./g,'').replace(',','.').replace(/[^\d.-]/g,''); const n=parseFloat(x); return isNaN(n)?0:n; };
+
+  const $form    = document.getElementById('formPedido');
+  const $tbody   = document.getElementById('bodyItens');
+  const $tpl     = document.getElementById('tplRow');
+  const $empresa = document.getElementById('{{ form.empresa.id_for_label }}');
+
+  const $desc = document.getElementById('{{ form.desconto_percentual.id_for_label }}');
+  const $acrc = document.getElementById('{{ form.acrescimo_percentual.id_for_label }}');
+  const $tSub = document.getElementById('tSub'), $tDesc = document.getElementById('tDesc'), $tAcr = document.getElementById('tAcr'), $tTotal = document.getElementById('tTotal');
+
+  // formset management
+  const $mgTotal = document.querySelector('input[name="{{ formset.management_form.TOTAL_FORMS.html_name }}"]');
+
+  // indexa variações por empresa
+  const byEmp = {};
+  VARIACOES.forEach(v=>{
+    const eid = String(v['produto__empresa_id']||'');
+    (byEmp[eid]||(byEmp[eid]=[])).push(v);
+  });
+
+  function buildOptions(select, empresaId, keepSelected=true){
+    const prev = keepSelected ? select.value : '';
+    const list = empresaId ? (byEmp[String(empresaId)]||[]) : VARIACOES;
+    select.innerHTML = '<option value="">-- selecione --</option>' + list.map(v=>{
+      const rotulo = `${v['produto__nome']} ${v.tamanho}/${v.cor} · SKU ${v.sku}`;
+      return `<option value="${v.id}" data-preco="${v.preco_sugerido||0}">${rotulo}</option>`;
+    }).join('');
+    if (keepSelected && prev){
+      const opt = Array.from(select.options).find(o=> o.value===prev);
+      if (opt) select.value = prev;
+    }
+  }
+
+  function getSuggested($sel){
+    const opt = $sel.options[$sel.selectedIndex];
+    return toNum(opt?.dataset?.preco || 0);
+  }
+
+  // Preenche o preço se estiver vazio/zero
+  function ensurePrice(tr){
+    const $sel = tr.querySelector('.item-variacao');
+    const $prc = tr.querySelector('.item-price');
+    if (!$sel || !$prc) return;
+    const cur = toNum($prc.value);
+    const sug = getSuggested($sel);
+    if ((isNaN(cur) || cur <= 0) && sug > 0){
+      $prc.value = sug.toFixed(2).replace('.', ',');
+    }
+  }
+
+  function bindRow(tr){
+    const $sel = tr.querySelector('.item-variacao');
+    const $qty = tr.querySelector('.item-qty');
+    const $prc = tr.querySelector('.item-price');
+    const $btn = tr.querySelector('.btn-remove');
+    const $del = tr.querySelector('.del-flag');
+
+    // monta options com data-preco preservando seleção
+    if($empresa){ buildOptions($sel, $empresa.value, true); }
+    // garante preço preenchido ao carregar
+    ensurePrice(tr);
+
+    $sel.addEventListener('change', ()=>{
+      // sempre que trocar a variação, se preço estiver vazio/zero, preenche com sugerido
+      ensurePrice(tr);
+      recalc();
+    });
+
+    [$qty,$prc].forEach(el=> el && el.addEventListener('input', recalc));
+
+    $btn.addEventListener('click', ()=>{
+      if($del){ if($del.type==='checkbox') $del.checked = true; tr.style.display='none'; }
+      else { tr.remove(); }
+      recalc();
+    });
+  }
+
+  function addRow(){
+    const idx = parseInt($mgTotal.value,10);
+    const html = $tpl.innerHTML.replace(/__prefix__/g, idx);
+    const wrap = document.createElement('tbody'); wrap.innerHTML = html;
+    const row = wrap.firstElementChild;
+    $tbody.appendChild(row);
+    $mgTotal.value = idx + 1;
+    bindRow(row);   // já cria opções e preenche preço quando selecionar
+    recalc();
+  }
+
+  function recalc(){
+    let subtotal = 0;
+    $tbody.querySelectorAll('.row-item').forEach(tr=>{
+      if(tr.style.display==='none') return;
+      const q = toNum(tr.querySelector('.item-qty')?.value);
+      const p = toNum(tr.querySelector('.item-price')?.value);
+      const st = q * p;
+      tr.querySelector('.item-subtotal').textContent = fmtBR(st);
+      subtotal += st;
+    });
+    const d = Math.max(0,toNum($desc?.value)), a = Math.max(0,toNum($acrc?.value));
+    const valDesc = subtotal*(d/100), valAcr = subtotal*(a/100);
+    const total = subtotal - valDesc + valAcr;
+
+    $tSub.textContent = fmtBR(subtotal);
+    $tDesc.textContent = fmtBR(valDesc);
+    $tAcr.textContent  = fmtBR(valAcr);
+    $tTotal.textContent= fmtBR(total);
+  }
+
+  // binds iniciais
+  $tbody.querySelectorAll('.row-item').forEach(bindRow);
+  // garantia extra: se algum ficar sem preço, tenta preencher pelo selecionado
+  $tbody.querySelectorAll('.row-item').forEach(ensurePrice);
+  recalc();
+
+  document.getElementById('btnAddRow').addEventListener('click', addRow);
+  [$desc,$acrc].forEach(el=> el && el.addEventListener('input', recalc));
+
+  // ao trocar a empresa, reconstrói as options e tenta preservar seleção válida
+  $empresa && $empresa.addEventListener('change', ()=>{
+    $tbody.querySelectorAll('.row-item').forEach(tr=>{
+      const $sel = tr.querySelector('.item-variacao');
+      const selectedBefore = $sel.value;
+      buildOptions($sel, $empresa.value, true);
+      // se a seleção anterior não existir nessa empresa, zera e o preço será reavaliado
+      if ($sel.value !== selectedBefore){
+        $sel.dispatchEvent(new Event('change'));
+      }else{
+        ensurePrice(tr);
+        recalc();
+      }
+    });
+  });
+
+  // validação rápida + máscara percentuais
+  $form.addEventListener('submit', (e)=>{
+    if(!$form.checkValidity()){ e.preventDefault(); e.stopPropagation(); $form.classList.add('was-validated'); }
+  });
+  document.addEventListener('input',(ev)=>{
+    if(!ev.target.classList.contains('perc')) return;
+    const num = toNum(ev.target.value);
+    if(!isNaN(num)) ev.target.value = num.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    recalc();
+  });
+})();
+</script>
+
+</body>
+</html>

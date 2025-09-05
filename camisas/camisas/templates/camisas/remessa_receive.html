@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Camisas • Receber Remessa {{ r.numero }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    :root{ --ink:#0f172a; --muted:#64748b; --ring:rgba(37,99,235,.18); --g1:#f30c80; --g2:#f30c80; --base-font:14px; }
+    html{ font-size:var(--base-font); }
+    body{ background:#f6f8fb; color:var(--ink); }
+
+    .nav-pro{ background:linear-gradient(90deg,var(--g1),var(--g2)); }
+    .card-clean{ border:none; border-radius:.9rem; box-shadow:0 10px 24px rgba(17,24,39,.08); }
+    .mini{ font-size:.8rem; color:var(--muted); }
+    .badge-soft{ background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; }
+
+    .form-control:focus, .form-select:focus{ box-shadow:0 0 0 .25rem var(--ring); border-color:#93c5fd; }
+    .table{ font-size:.875rem; }
+    .table thead th{ font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:#64748b; border-top:0; }
+
+    /* inputs compactos na tabela */
+    .table input[type="number"], .table input[type="text"], .table select{ height:34px; padding:.25rem .5rem; }
+    .w-80{ min-width:80px; }
+
+    /* pills */
+    .pill{ display:inline-flex; align-items:center; gap:.4rem; padding:.35rem .6rem; border:1px solid #e5e7eb; border-radius:999px; background:#fff; }
+    .pill b{ font-weight:600; }
+
+    /* legenda de tamanhos */
+    .sizes-legend{ display:flex; flex-wrap:wrap; gap:.4rem; }
+    .sizes-legend .tag{ background:#fff; border:1px solid #e5e7eb; border-radius:999px; padding:.2rem .55rem; font-weight:600; font-size:.78rem; }
+
+    /* quadro de totais por tamanho */
+    .totais-grade{ display:grid; grid-template-columns: repeat(6, 1fr); gap:.4rem; }
+    @media (min-width: 992px){
+      .totais-grade{ grid-template-columns: repeat(12, 1fr); }
+    }
+    .tot-card{ background:#fff; border:1px solid #e5e7eb; border-radius:.65rem; padding:.4rem .55rem; text-align:center; }
+    .tot-card .t{ font-size:.7rem; color:#64748b; text-transform:uppercase; letter-spacing:.04em; }
+    .tot-card .v{ font-weight:800; font-size:.95rem; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{% url 'camisas:home' %}">YLA Criativa • Camisas</a>
+    <div class="ms-auto d-flex flex-wrap gap-2">
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:empresa_list' %}">Empresas</a>
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:cliente_list' %}">Clientes</a>
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:insumo_list' %}">Insumos</a>
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:produto_list' %}">Produtos</a>
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:remessa_list' %}">Remessas</a>
+      <a class="btn btn-sm btn-warning" href="{% url 'camisas:op_create' %}">Ordem Produção</a>
+      <a class="btn btn-sm btn-info" href="{% url 'camisas:pedido_list' %}">Pedidos</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+
+  {% for message in messages %}
+    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+  {% endfor %}
+
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h5 m-0">Receber Remessa {{ r.numero }}</h1>
+      <div class="mini">
+        Informe as quantidades recebidas por tamanho.
+        {% if r.tipo == 'COSTURA' %}
+          <strong>Ao confirmar</strong>, as quantidades entram no estoque automaticamente.
+        {% endif %}
+      </div>
+      <div class="d-flex flex-wrap gap-2 mt-2">
+        <span class="pill"><b>Status</b><span class="badge badge-soft">{{ r.get_status_display }}</span></span>
+        <span class="pill"><b>Tipo</b><span class="mini">{{ r.get_tipo_display }}</span></span>
+        <span class="pill"><b>Costureira</b><span class="mini">{{ r.costureira.nome }}</span></span>
+        <span class="pill"><b>Kg enviados</b><span class="mini">{{ r.kg_enviados|floatformat:3 }}</span></span>
+      </div>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'camisas:remessa_detail' r.id %}">Voltar</a>
+  </div>
+
+  <!-- Legenda de tamanhos -->
+  <div class="card-clean p-3 mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="mini">Tamanhos padronizados</div>
+      <div class="sizes-legend">
+        {% for t in tamanhos %}
+          <span class="tag">{{ t }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+    {{ formset.management_form }}
+
+    <div class="card-clean p-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="h6 m-0">Itens por tamanho</h2>
+        <div class="d-flex gap-2">
+          <button type="button" id="btnFillPrev" class="btn btn-outline-secondary btn-sm">Preencher com Previsto</button>
+          <button type="button" id="btnZero" class="btn btn-outline-secondary btn-sm">Zerar</button>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>Produto</th>
+              <th>Tamanho</th>
+              <th>Cor</th>
+              <th>Previsto</th>
+              <th>Recebido (OK)</th>
+              <th>Perda</th>
+              <th>Extravio</th>
+              <th>Devolvida</th>
+              <th>Preço (R$)</th>
+            </tr>
+          </thead>
+          <tbody id="tblGrade">
+            {% for form in formset %}
+              {% ifchanged form.instance.variacao.produto_id %}
+                <tr class="table-light">
+                  <td colspan="9" class="fw-semibold">
+                    {{ form.instance.variacao.produto.nome }}
+                  </td>
+                </tr>
+              {% endifchanged %}
+              <tr class="row-var"
+                  data-tam="{{ form.instance.variacao.tamanho|default_if_none:''|upper }}">
+                <td class="mini">{{ form.instance.variacao.produto.nome }}</td>
+                <td class="fw-semibold tam">{{ form.instance.variacao.tamanho }}</td>
+                <td>{{ form.instance.variacao.cor }}</td>
+
+                <td class="mini previsto" data-prev="{{ form.instance.qtd_prevista }}">
+                  {{ form.instance.qtd_prevista }}
+                </td>
+
+                <td class="w-80 okcell">{{ form.qtd_ok }}</td>
+                <td class="w-80">{{ form.qtd_perda }}</td>
+                <td class="w-80">{{ form.qtd_extravio }}</td>
+                <td class="w-80">{{ form.qtd_devolvida }}</td>
+                <td class="w-80">{{ form.preco_unit }}</td>
+
+                {% for f in form.hidden_fields %}{{ f }}{% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="fw-bold">
+              <td colspan="3" class="text-end">Totais:</td>
+              <td id="totPrev">0</td>
+              <td id="totOk">0</td>
+              <td colspan="4"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Totais por tamanho (dinâmico) -->
+      <div class="mt-3">
+        <div class="mini mb-1">Totais por tamanho (Recebido OK)</div>
+        <div id="totBySize" class="totais-grade">
+          {% for t in tamanhos %}
+            <div class="tot-card" data-size="{{ t }}">
+              <div class="t">{{ t }}</div>
+              <div class="v">0</div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="mini text-muted mt-2">
+        Dica: use TAB para navegar. Perda, Extravio, Devolvida e Preço podem ser ajustados por linha.
+        Se preferir, use “Preencher com Previsto” para copiar o planejado para “Recebido (OK)”.
+      </div>
+
+      <div class="d-flex justify-content-end mt-3 gap-2">
+        <a class="btn btn-outline-secondary" href="{% url 'camisas:remessa_detail' r.id %}">Cancelar</a>
+        <button class="btn btn-success">Confirmar recebimento</button>
+      </div>
+    </div>
+  </form>
+</main>
+
+<script>
+(function(){
+  const q  = (sel,root=document)=>root.querySelector(sel);
+  const qa = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
+  const tbody   = q('#tblGrade');
+  const totPrev = q('#totPrev');
+  const totOk   = q('#totOk');
+  const totWrap = q('#totBySize');
+
+  // Mantém a mesma ordem oficial de tamanhos do backend
+  const SIZES = ['PP','P','M','G','GG','XGG','PPB','PB','MB','GB','GGB','XGGB'];
+
+  function normalizeNumberInputs(){
+    // Quantidades
+    ['qtd_ok','qtd_perda','qtd_extravio','qtd_devolvida'].forEach(suffix=>{
+      qa(`input[name$="-${suffix}"]`, tbody).forEach(inp=>{
+        inp.setAttribute('inputmode','decimal');
+        inp.setAttribute('min','0');
+        inp.setAttribute('step','0.01');
+        inp.addEventListener('input', recalc);
+      });
+    });
+    // Preço
+    qa('input[name$="-preco_unit"]', tbody).forEach(inp=>{
+      inp.setAttribute('inputmode','decimal');
+      inp.setAttribute('min','0');
+      inp.setAttribute('step','0.01');
+    });
+  }
+
+  function parseNum(v){
+    if (typeof v !== 'string') v = String(v||'');
+    // aceita "1.234,56" ou "1234.56"
+    v = v.replace(/\./g,'').replace(',', '.').trim();
+    const n = parseFloat(v);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function formatInt(n){ return (Math.round(n)||0).toLocaleString('pt-BR'); }
+
+  function recalc(){
+    // totais gerais
+    const prev = qa('td.previsto', tbody)
+      .reduce((acc,td)=> acc + parseNum(td.dataset.prev||td.textContent), 0);
+    const ok = qa('input[name$="-qtd_ok"]', tbody)
+      .reduce((acc,inp)=> acc + parseNum(inp.value), 0);
+    totPrev.textContent = formatInt(prev);
+    totOk.textContent   = formatInt(ok);
+
+    // totais por tamanho (somente OK)
+    const map = Object.fromEntries(SIZES.map(s=>[s,0]));
+    qa('tr.row-var', tbody).forEach(tr=>{
+      const size = (tr.getAttribute('data-tam')||'').toUpperCase();
+      const inp  = q('input[name$="-qtd_ok"]', tr);
+      if (!inp) return;
+      const v = parseNum(inp.value);
+      if (map[size] !== undefined) map[size] += v;
+    });
+    SIZES.forEach(s=>{
+      const card = totWrap.querySelector(`.tot-card[data-size="${s}"] .v`);
+      if (card) card.textContent = formatInt(map[s]);
+    });
+  }
+
+  function fillWithPrev(){
+    qa('tr.row-var', tbody).forEach(tr=>{
+      const prevTd = tr.querySelector('td.previsto');
+      const inpOK  = tr.querySelector('input[name$="-qtd_ok"]');
+      if (prevTd && inpOK) inpOK.value = (prevTd.dataset.prev || prevTd.textContent).trim();
+      // zera perdas/extravio/devolvida quando preencher com previsto
+      ['qtd_perda','qtd_extravio','qtd_devolvida'].forEach(suffix=>{
+        const inp = tr.querySelector(`input[name$="-${suffix}"]`);
+        if (inp) inp.value = '0';
+      });
+    });
+    recalc();
+  }
+
+  function fillZero(){
+    ['qtd_ok','qtd_perda','qtd_extravio','qtd_devolvida'].forEach(suffix=>{
+      qa(`input[name$="-${suffix}"]`, tbody).forEach(inp=> inp.value = '0');
+    });
+    recalc();
+  }
+
+  normalizeNumberInputs();
+  recalc();
+  q('#btnFillPrev')?.addEventListener('click', fillWithPrev);
+  q('#btnZero')?.addEventListener('click', fillZero);
+})();
+</script>
+
+</body>
+</html>

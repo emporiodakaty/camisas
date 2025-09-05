@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Camisas • Remessa {{ r.numero }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    :root{ --ink:#0f172a; --muted:#64748b; --ring:rgba(37,99,235,.18); --g1:#f30c80; --g2:#f30c80; --base-font:14px; }
+    html{ font-size:var(--base-font); }
+    body{ background:#f6f8fb; color:var(--ink); }
+    .nav-pro{ background:linear-gradient(90deg,var(--g1),var(--g2)); }
+    .card-clean{ border:none; border-radius:.9rem; box-shadow:0 10px 24px rgba(17,24,39,.08); }
+    .mini{ font-size:.8rem; color:var(--muted); }
+    .badge-soft{ background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; }
+    .table{ font-size:.875rem; }
+    .table thead th{ font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:#64748b; border-top:0; }
+    .pill{ display:inline-flex; align-items:center; gap:.4rem; padding:.35rem .6rem; border:1px solid #e5e7eb; border-radius:999px; background:#fff; }
+    .pill b{ font-weight:600; }
+    .section-title{ font-size:1rem; font-weight:700; margin:0; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{% url 'camisas:home' %}">YLA Criativa • Camisas</a>
+    <div class="d-flex flex-wrap gap-2 ms-auto">
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:empresa_list' %}">Empresas</a>
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:cliente_list' %}">Clientes</a>
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:insumo_list' %}">Insumos</a>
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:produto_list' %}">Produtos</a>
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:remessa_list' %}">Remessas</a>
+      <a class="btn btn-sm btn-success" href="{% url 'camisas:remessa_create' %}">+ Nova remessa</a>
+      <a class="btn btn-sm btn-warning" href="{% url 'camisas:op_create' %}">Ordem Produção</a>
+      <a class="btn btn-sm btn-info" href="{% url 'camisas:pedido_list' %}">Pedidos</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  {% for message in messages %}
+    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+  {% endfor %}
+
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h5 m-0">Remessa {{ r.numero }}</h1>
+      <div class="mini">Detalhes e itens da remessa</div>
+    </div>
+    <div class="btn-group">
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'camisas:remessa_list' %}">Voltar</a>
+      <a class="btn btn-sm btn-outline-primary" target="_blank" href="{% url 'camisas:remessa_print' r.id %}">Imprimir</a>
+      {% if not r.recebido_em %}
+        <a class="btn btn-sm btn-success" href="{% url 'camisas:remessa_receive' r.id %}">Receber</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Fluxo (explicação do que o sistema fará ao receber) -->
+  {% if not r.recebido_em %}
+    {% if r.tipo == 'CORTE' %}
+      <div class="alert alert-warning">
+        <strong>Fluxo (Corte):</strong> ao confirmar o recebimento o sistema <em>baixa</em> os insumos da fase CORTE
+        (ex.: tecido), calcula <em>pagamento</em> pela quantidade OK e mantém as peças para a próxima etapa (Costura).
+      </div>
+    {% elif r.tipo == 'COSTURA' %}
+      <div class="alert alert-success">
+        <strong>Fluxo (Costura):</strong> ao confirmar o recebimento o sistema <em>baixa</em> os insumos de COSTURA
+        (ex.: linha/etiqueta), <em>dá entrada</em> no estoque de produtos acabados de cada tamanho e gera o <em>pagamento</em>.
+      </div>
+    {% elif r.tipo == 'CORRECAO' %}
+      <div class="alert alert-info">
+        <strong>Fluxo (Correção):</strong> normalmente apenas apura o <em>pagamento</em> conforme OK.
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="alert alert-secondary">
+      Recebida em {{ r.recebido_em|date:"d/m/Y H:i" }} — estoque/insumos e pagamento já foram processados conforme o tipo da remessa.
+    </div>
+  {% endif %}
+
+  <!-- Resumo em pills -->
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    <span class="pill"><b>Status</b><span class="badge badge-soft">{{ r.get_status_display }}</span></span>
+    <span class="pill"><b>Tipo</b><span class="mini">{{ r.get_tipo_display }}</span></span>
+    {% if r.produto %}<span class="pill"><b>Produto</b><span class="mini">{{ r.produto.nome }}</span></span>{% endif %}
+    <span class="pill"><b>Kg enviados</b><span class="mini">{{ r.kg_enviados|floatformat:3 }}</span></span>
+    <span class="pill"><b>Enviado</b><span class="mini">{{ r.enviado_em|date:"d/m/Y H:i" }}</span></span>
+    <span class="pill"><b>Recebido</b><span class="mini">{% if r.recebido_em %}{{ r.recebido_em|date:"d/m/Y H:i" }}{% else %}—{% endif %}</span></span>
+  </div>
+
+  <!-- Dados da remessa -->
+  <div class="card-clean p-3 mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h2 class="section-title">Dados da remessa</h2>
+      <span class="badge badge-soft">Resumo</span>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="border rounded-3 p-3 bg-white h-100">
+          <div class="mb-1 mini text-uppercase">Origem</div>
+          <div><strong>Empresa:</strong> {{ r.empresa.nome_fantasia }}</div>
+          <div><strong>Costureira:</strong> {{ r.costureira.nome }}</div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="border rounded-3 p-3 bg-white h-100">
+          <div class="mb-1 mini text-uppercase">Status / Observações</div>
+          <div><strong>Status:</strong> {{ r.get_status_display }}</div>
+          <div><strong>Tipo:</strong> {{ r.get_tipo_display }}</div>
+          {% if r.observacao %}
+            <div class="mt-2"><strong>Obs.:</strong> {{ r.observacao }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Itens -->
+  <div class="card-clean p-3 mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h2 class="section-title">Itens</h2>
+      <button id="btnExportItens" class="btn btn-dark btn-sm">Exportar CSV</button>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Variação</th>
+            <th>Previsto</th>
+            <th>OK</th>
+            <th>Perda</th>
+            <th>Extravio</th>
+            <th>Devolvida</th>
+            <th>Preço</th>
+            <th>A pagar</th>
+          </tr>
+        </thead>
+        <tbody id="tblBodyItens">
+          {% for it in r.itens.all %}
+          <tr>
+            <td>{{ it.variacao.produto.nome }} {{ it.variacao.tamanho }}/{{ it.variacao.cor }}</td>
+            <td>{{ it.qtd_prevista }}</td>
+            <td>{{ it.qtd_ok }}</td>
+            <td>{{ it.qtd_perda }}</td>
+            <td>{{ it.qtd_extravio }}</td>
+            <td>{{ it.qtd_devolvida }}</td>
+            <td>R$ {{ it.preco_unitario_efetivo|floatformat:2 }}</td>
+            <td>R$ {{ it.a_pagar|floatformat:2 }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="text-center text-muted py-4">Sem itens.</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="fw-bold">
+            <td>Total</td>
+            <td>{{ r.total_pecas_previstas }}</td>
+            <td>{{ r.total_pecas_ok }}</td>
+            <td colspan="3"></td>
+            <td></td>
+            <td>R$ {{ r.total_a_pagar|floatformat:2 }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    {% if r.pagamento %}
+      <div class="alert alert-info mb-0">
+        Pagamento: <strong>R$ {{ r.pagamento.valor_total|floatformat:2 }}</strong>
+        • Status: {{ r.pagamento.get_status_display }}
+      </div>
+    {% elif r.recebido_em %}
+      <div class="alert alert-info mb-0">
+        Pagamento pendente de geração. (Se você recebeu pela tela de “Receber”, ele é gerado automaticamente.)
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Próximo passo (sugestão) -->
+  {% if r.recebido_em and r.tipo == 'CORTE' %}
+    <div class="card-clean p-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="section-title">Próximo passo</h2>
+      </div>
+      <p class="mb-2 mini">
+        Com as quantidades OK do corte, gere a remessa de <strong>Costura</strong> para a mesma costureira (ou outra).
+      </p>
+      <a class="btn btn-sm btn-primary" href="{% url 'camisas:remessa_create' %}?tipo=COSTURA&empresa={{ r.empresa.id }}{% if r.produto_id %}&produto={{ r.produto.id }}{% endif %}">
+        Nova remessa de COSTURA
+      </a>
+      <span class="mini ms-2 text-muted">O formulário abrirá; confirme/ajuste os itens e imprima.</span>
+    </div>
+  {% endif %}
+</main>
+
+<script>
+(function(){
+  const btn = document.getElementById('btnExportItens');
+  btn && btn.addEventListener('click', ()=>{
+    const body = document.getElementById('tblBodyItens');
+    if(!body){ alert('Sem dados'); return; }
+    const rows = Array.from(body.querySelectorAll('tr'));
+    if(!rows.length){ alert('Sem dados'); return; }
+    const head = ['Variacao','Previsto','OK','Perda','Extravio','Devolvida','Preco','A_pagar'];
+    const data = rows.map(r=>{
+      const tds = Array.from(r.children);
+      return [
+        (tds[0]?.innerText||'').trim(),
+        (tds[1]?.innerText||'').trim(),
+        (tds[2]?.innerText||'').trim(),
+        (tds[3]?.innerText||'').trim(),
+        (tds[4]?.innerText||'').trim(),
+        (tds[5]?.innerText||'').trim(),
+        (tds[6]?.innerText||'').replace('R$','').trim(),
+        (tds[7]?.innerText||'').replace('R$','').trim()
+      ];
+    });
+    const csv = [head, ...data].map(row=> row.map(c=> '"'+(c||'').replace(/"/g,'""')+'"').join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download=`remessa_{{ r.numero }}_itens.csv`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 1200);
+  });
+})();
+</script>
+
+</body>
+</html>

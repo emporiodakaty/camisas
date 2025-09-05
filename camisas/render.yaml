@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: sistema-camisas
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "bash -c 'python manage.py collectstatic --noinput && python manage.py migrate && gunicorn seu_projeto.wsgi:application --bind 0.0.0.0:8000'"
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: "sistema-camisas.onrender.com"
+      - key: CSRF_TRUSTED_ORIGINS
+        value: "https://sistema-camisas.onrender.com"
+      - key: DATABASE_URL
+        sync: false

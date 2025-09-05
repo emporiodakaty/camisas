@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <title>Cotação de Preços #{{ pedido.numero_orcamento|default:pedido.pk }}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    :root{--ink:#0f172a;--muted:#64748b;--g1:#000;--g2:#000;--base:13px;}
+    html{font-size:var(--base);} body{background:#f6f8fb;color:var(--ink);}
+    .paper{max-width:980px;margin:20px auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 10px 22px rgba(17,24,39,.08)}
+    .brand{background:linear-gradient(90deg,var(--g1),var(--g2));color:#fff;border-top-left-radius:12px;border-top-right-radius:12px;padding:10px 16px}
+    .p-wrap{padding:16px}
+    .ec-section{margin-top:24px;}
+    .small-muted{color:var(--muted)}
+    .table{font-size:.84rem;margin-bottom:.6rem}
+    .table thead th{font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#64748b;border-top:0}
+    .totals{border:1px solid #e5e7eb;border-radius:10px;padding:.6rem;background:#fff}
+    .kv .k{color:#64748b;min-width:140px}
+    .logo{height:38px;object-fit:contain}
+
+    /* Tabelas compactas (Empresa/Cliente) */
+    .info-title{font-weight:600;margin-bottom:.3rem}
+    .info-table{margin:0 0 6px 0}
+    .info-table th{width:42%;white-space:nowrap;color:var(--muted);font-weight:600;background:#f8fafc}
+    .table-sm>:not(caption)>*>*{padding:.22rem .45rem}
+
+    /* Processo no cabeçalho */
+    .proc-grid{
+      display:grid;grid-template-columns:auto 1fr;gap:.1rem .6rem;
+      font-size:.76rem;color:#e2e8f0;margin-top:.2rem
+    }
+    .proc-grid .k{opacity:.8}
+
+    /* Itens — dar mais espaço à descrição */
+    .items-table td:nth-child(2){
+      text-align: justify;
+      text-justify: inter-word;
+      hyphens: auto; -webkit-hyphens:auto; -ms-hyphens:auto;
+      word-break: break-word;
+    }
+    .items-table thead th,
+    .items-table tbody td{vertical-align:top}
+    .items-table th:nth-child(5), .items-table td:nth-child(5),
+    .items-table th:nth-child(6), .items-table td:nth-child(6){
+      text-align:right; white-space:nowrap;
+    }
+    /* compactar ainda mais a tabela de itens */
+    .items-table>:not(caption)>*>*{padding:.22rem .45rem; line-height:1.2}
+
+    /* Assinaturas */
+    .sig-box{
+      border:1px dashed #cbd5e1;border-radius:10px;padding:12px;
+      background:#fafbff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+      min-height:120px;
+    }
+    .sig-img{max-height:86px;width:auto;object-fit:contain}
+    .sig-line{width:min(340px,80%);height:0;border-bottom:2px solid #334155;margin-top:6px}
+    .sig-caption{font-size:.9rem;color:#64748b;text-align:center}
+
+    /* Assinatura eletrônica (SLIM) */
+    .esig-box{border:1px solid #cbd5e1;border-radius:10px;padding:10px;background:#f8fafc;}
+    .esig-title{font-weight:600;font-size:.88rem;margin-bottom:.2rem;line-height:1.1}
+    .esig-box .small{font-size:.78rem;line-height:1.1}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:.72em;letter-spacing:.01em;word-break:break-all}
+    .esig-qr{width:56px;height:56px;object-fit:contain}
+
+    /* Linha única de condições no rodapé */
+    .cond-inline{
+      border-top:1px solid #e5e7eb; margin-top:10px; padding-top:8px;
+      font-size:.86rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+
+    @media print{
+      body{background:#fff}
+      .paper{box-shadow:none;border:0;margin:0;max-width:100% !important;width:100% !important}
+      .no-print{display:none!important}
+      .brand{padding:8px 12px}
+      .p-wrap{padding:12px}
+      .ec-section{margin-top:14px;}
+      .table{font-size:.8rem}
+
+      .print-ec{
+        display:grid !important; grid-template-columns: 1fr 1.2fr !important;
+        column-gap:10px !important; row-gap:8px !important; align-items:start !important;
+      }
+      .print-ec > [class^="col-"]{margin:0!important;padding:0!important}
+
+      .info-table{table-layout:auto;width:100%;}
+      .info-table th{width:22% !important; white-space:nowrap; padding:.18rem .4rem !important;}
+      .info-table td{width:78% !important; word-break:break-word; padding:.18rem .4rem !important;}
+
+      .items-table{table-layout:auto;width:100%}
+      .items-table th:nth-child(6), .items-table td:nth-child(6){white-space:nowrap !important;}
+      .items-table>:not(caption)>*>*{padding:.18rem .4rem; line-height:1.15}
+
+      .signatures-grid{display:grid !important; grid-template-columns: 1fr 1fr !important; column-gap:10px !important; align-items:start !important;}
+      .sig-box, .esig-box, .kv{break-inside:avoid; page-break-inside:avoid}
+      .cond-inline{white-space:nowrap !important;}
+
+      .esig-box{ padding:8px; }
+      .esig-title{ font-size:.86rem; }
+      .esig-box .small{ font-size:.74rem; }
+      .esig-qr{ width:48px; height:48px; }
+      .mono{ font-size:.68em; }
+    }
+  </style>
+</head>
+<body>
+<div class="paper">
+  <!-- Cabeçalho -->
+  <div class="brand d-flex justify-content-between align-items-start">
+    <div class="d-flex align-items-start gap-3">
+      {% if empresa.logo_has_file %}<img class="logo" src="{{ empresa.logo_url_safe }}" alt="{{ empresa.nome_fantasia }}">{% endif %}
+      <div>
+        <div class="fw-bold">Cotação de Preços</div>
+        <div class="text-white-50 small">
+          {% with c=cot %}
+            Nº {{ pedido.numero_orcamento|default:pedido.pk }} • {{ pedido.criado_em|date:"d/m/Y H:i" }}
+            {% if c.modalidade %} • Modalidade: {{ c.modalidade }}{% endif %}
+            {% if pedido.validade %} • Validade: {{ pedido.validade|date:"d/m/Y" }}
+            {% elif c.validade %}     • Validade: {{ c.validade }}{% endif %}
+          {% endwith %}
+        </div>
+
+        {% with c=cot %}
+        {% if c.processo or c.edital %}
+        <div class="proc-grid">
+          {% if c.processo %}<div class="k">Processo:</div><div>{{ c.processo }}</div>{% endif %}
+          {% if c.edital %}<div class="k">Edital:</div><div>{{ c.edital }}</div>{% endif %}
+        </div>
+        {% endif %}
+        {% endwith %}
+      </div>
+    </div>
+    <button class="btn btn-light btn-sm no-print" onclick="window.print()">Imprimir</button>
+  </div>
+
+  <div class="p-wrap">
+    <!-- Empresa / Cliente -->
+    <div class="row g-3 mb-2 print-ec ec-section">
+      <div class="col-12 col-md-5">
+        <div class="info-title">Empresa</div>
+        <table class="table table-sm table-bordered info-table">
+          <tbody>
+            <tr><th>Nome Fantasia</th><td class="fw-semibold">{{ empresa.nome_fantasia }}</td></tr>
+            {% if empresa.cnpj %}<tr><th>CNPJ</th><td>{{ empresa.cnpj }}</td></tr>{% endif %}
+            {% if empresa.inscricao_estadual %}<tr><th>IE</th><td>{{ empresa.inscricao_estadual }}</td></tr>{% endif %}
+            {% if empresa.endereco %}<tr><th>Endereço</th><td>{{ empresa.endereco }}</td></tr>{% endif %}
+            {% if empresa.cidade or empresa.uf %}<tr><th>Cidade/UF</th><td>{{ empresa.cidade }}{% if empresa.uf %}/{{ empresa.uf }}{% endif %}</td></tr>{% endif %}
+            {% if empresa.email %}<tr><th>E-mail</th><td>{{ empresa.email }}</td></tr>{% endif %}
+            {% if empresa.telefone %}<tr><th>Telefone</th><td>{{ empresa.telefone }}</td></tr>{% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="col-12 col-md-7">
+        <div class="info-title">Cliente (Órgão Público)</div>
+        <table class="table table-sm table-bordered info-table">
+          <tbody>
+            <tr><th>Nome</th><td class="fw-semibold">{{ cliente }}</td></tr>
+            {% if cliente.cpf_cnpj %}<tr><th>CNPJ</th><td>{{ cliente.cpf_cnpj }}</td></tr>{% endif %}
+            {% if cliente.endereco %}<tr><th>Endereço</th><td>{{ cliente.endereco }}</td></tr>{% endif %}
+            {% if cliente.email %}<tr><th>E-mail</th><td>{{ cliente.email }}</td></tr>{% endif %}
+            {% if cliente.telefone %}<tr><th>Telefone</th><td>{{ cliente.telefone }}</td></tr>{% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Itens -->
+    <div class="table-responsive">
+      <table class="table table-sm align-middle items-table">
+        <thead>
+          <tr>
+            <!-- Redução do Item e aumento da Descrição -->
+            <th style="width:20%">Item</th>
+            <th style="width:44%">Descrição</th>
+            <th style="width:6%">Unid.</th>
+            <th style="width:8%">Qtd</th>
+            <th style="width:11%">Valor unit.</th>
+            <th style="width:11%">Valor total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in itens %}
+          <tr>
+            <td class="fw-semibold">{{ it.variacao.produto.nome }}</td>
+            <td class="text-break">
+              {% if it.descricao %}{{ it.descricao }}
+              {% elif it.variacao.produto.descricao %}{{ it.variacao.produto.descricao }}
+              {% else %}—{% endif %}
+            </td>
+            <td>{{ it.unidade|default:"UN" }}</td>
+            <td>{{ it.quantidade }}</td>
+            <td>R$ {{ it.preco_unitario|floatformat:2 }}</td>
+            <td>R$ {{ it.subtotal|floatformat:2 }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="text-center small-muted py-4">Sem itens.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Totais -->
+    <div class="row justify-content-end">
+      <div class="col-md-6">
+        <div class="totals">
+          <div class="d-flex justify-content-between"><span class="small-muted">Subtotal</span><span>R$ {{ subtotal|floatformat:2 }}</span></div>
+
+          {% if val_desc %}
+            <div class="d-flex justify-content-between">
+              <span class="small-muted">Desconto{% if pedido.desconto_percentual %} ({{ pedido.desconto_percentual }}%){% endif %}</span>
+              <span>− R$ {{ val_desc|floatformat:2 }}</span>
+            </div>
+          {% endif %}
+
+          {% if val_acr %}
+            <div class="d-flex justify-content-between">
+              <span class="small-muted">Acréscimo{% if pedido.acrescimo_percentual %} ({{ pedido.acrescimo_percentual }}%){% endif %}</span>
+              <span>+ R$ {{ val_acr|floatformat:2 }}</span>
+            </div>
+          {% endif %}
+
+          {% if cot and cot.frete_valor %}
+            <div class="d-flex justify-content-between"><span class="small-muted">Frete</span><span>R$ {{ cot.frete_valor|floatformat:2 }}</span></div>
+          {% endif %}
+          <hr class="my-2">
+          <div class="d-flex justify-content-between fw-bold"><span>Total Geral</span><span>R$ {{ total|floatformat:2 }}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Assinaturas -->
+    <div class="row g-3 mt-3 signatures-grid">
+      <div class="col-12 col-lg-6">
+        <h3 class="h6 mb-1">Assinatura do Cliente</h3>
+        <div class="sig-box">
+          {% if pedido.approval_has_signature %}
+            <img class="sig-img" src="{{ pedido.approval_signature_url_safe }}" alt="Assinatura do cliente">
+          {% else %}
+            <div class="sig-line" aria-hidden="true"></div>
+          {% endif %}
+          <div class="sig-caption">Assinatura e carimbo</div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-6">
+        <h3 class="h6 mb-1">Assinatura Eletrônica</h3>
+        <div class="esig-box d-flex align-items-center justify-content-between gap-2">
+          <div>
+            <div class="esig-title">Assinado por {{ empresa.nome_fantasia }}</div>
+
+            <div class="small">
+              Data:
+              <span id="esig-date">
+                {% if esig_verify_url or esig_qr %}{{ esig_at|date:"d/m/Y" }}{% else %}—{% endif %}
+              </span>
+              &nbsp;•&nbsp; Hora:
+              <span id="esig-time">
+                {% if esig_verify_url or esig_qr %}{{ esig_at|date:"H:i" }}{% else %}—{% endif %}
+              </span>
+            </div>
+
+            <div class="small mt-1">
+              Hash: <span class="mono" id="esig-hash">{% if esig_hash %}{{ esig_hash }}{% else %}—{% endif %}</span>
+            </div>
+
+            {% if esig_verify_url %}
+              <div class="small mt-1 no-print"><a id="esig-verify" href="{{ esig_verify_url }}">Verificar assinatura</a></div>
+            {% elif esign_create_url %}
+              <div class="small mt-2 no-print">
+                <button id="btn-esign" class="btn btn-sm btn-primary">Gerar assinatura eletrônica</button>
+              </div>
+            {% endif %}
+          </div>
+
+          {% if esig_qr %}
+            <img id="esig-qr" class="esig-qr" src="{{ esig_qr }}" alt="QR de verificação da assinatura">
+          {% else %}
+            <img id="esig-qr" class="esig-qr d-none" alt="QR de verificação da assinatura">
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- CONDIÇÕES -->
+    {% with c=cot %}
+    {% if c.prazo_entrega or c.local_entrega or c.garantia or c.frete %}
+      <div class="cond-inline">
+        <strong>Condições da Proposta</strong>
+        {% if c.prazo_entrega %} Prazo de entrega: {{ c.prazo_entrega }}{% endif %}
+      </div>
+    {% endif %}
+    {% endwith %}
+
+    <!-- Rodapé -->
+    <div class="small small-muted mt-2">
+      Preços em reais, com tributos conforme legislação vigente. Proposta sujeita à disponibilidade de estoque.
+      Prazo e condições válidos conforme campos acima. Pagamento mediante nota/empenho/atesto do órgão contratante (quando aplicável).
+    </div>
+
+    <div class="d-flex justify-content-end gap-2 mt-3 no-print">
+      <a class="btn btn-outline-secondary" href="{% url 'camisas:pedido_detail' pedido.pk %}">Voltar</a>
+      <button class="btn btn-primary" onclick="window.print()">Imprimir / PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- JS: geração de assinatura -->
+<script>
+(function(){
+  const btn = document.getElementById('btn-esign');
+  if(!btn) return;
+
+  const postUrl = "{{ esign_create_url|default:'' }}";
+  if(!postUrl){
+    btn.remove();
+    return;
+  }
+
+  function getCookie(name){
+    const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return m ? m.pop() : '';
+  }
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Assinando...';
+
+    try{
+      const resp = await fetch(postUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+          "X-CSRFToken": getCookie("csrftoken"),
+        },
+        body: new URLSearchParams({ role: "empresa" }).toString()
+      });
+
+      if(!resp.ok) throw new Error('Falha ao assinar');
+      const data = await resp.json();
+
+      document.getElementById('esig-hash').textContent = data.hash || '—';
+
+      const qr = document.getElementById('esig-qr');
+      if(data.qr_data_url){
+        qr.src = data.qr_data_url;
+        qr.classList.remove('d-none');
+      }
+
+      const dt = new Date(data.signed_at);
+      const pad = n => String(n).padStart(2, '0');
+      const dia = pad(dt.getDate()), mes = pad(dt.getMonth()+1), ano = dt.getFullYear();
+      document.getElementById('esig-date').textContent = `${dia}/${mes}/${ano}`;
+      document.getElementById('esig-time').textContent = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+
+      let link = document.getElementById('esig-verify');
+      if(!link){
+        link = document.createElement('a');
+        link.id = 'esig-verify';
+        link.className = 'small mt-1 no-print d-block';
+        link.textContent = 'Verificar assinatura';
+        btn.parentElement.appendChild(link);
+      }
+      if(data.verify_url) link.href = data.verify_url;
+
+      btn.remove();
+    }catch(err){
+      btn.disabled = false;
+      btn.textContent = 'Gerar assinatura eletrônica';
+      alert('Não foi possível gerar a assinatura. Verifique as rotas e tente novamente.');
+      console.error(err);
+    }
+  });
+})();
+</script>
+</body>
+</html>

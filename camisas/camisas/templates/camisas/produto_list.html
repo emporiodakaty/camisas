@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Produtos • Camisas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    :root{--ink:#0f172a;--muted:#64748b;--ring:rgba(37,99,235,.18);--g1:#f30c80;--g2:#f30c80;--base-font:14px;}
+    html{font-size:var(--base-font);} body{background:#f6f8fb;color:var(--ink);}
+    .nav-pro{background:linear-gradient(90deg,var(--g1),var(--g2));}
+    .sticky-topbar{position:sticky;top:0;z-index:20;background:#ffffffd6;backdrop-filter:blur(6px);}
+    .toolbar .form-control,.toolbar .form-select{border-radius:.6rem;border-color:#e5e7eb;font-size:.85rem;padding:.35rem .5rem}
+    .toolbar .form-control:focus,.toolbar .form-select:focus{box-shadow:0 0 0 .25rem var(--ring);border-color:#93c5fd}
+    .table{font-size:.875rem}.table thead th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#64748b;border-top:0}
+    .card-surface{background:#fff;border:1px solid #e5e7eb;border-radius:.9rem}
+    .empty{border:1px dashed #cbd5e1;border-radius:12px;background:#fff;padding:2rem;text-align:center}
+    .badge-soft{background:#eef2f7;color:#334155}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+  </style>
+</head>
+<body>
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{% url 'camisas:home' %}">Camisas</a>
+    <div class="ms-auto d-flex gap-2">
+      <a class="btn btn-sm btn-primary" href="{% url 'camisas:produto_create' %}">+ Produto</a>
+      <a class="btn btn-sm btn-warning" href="{% url 'camisas:variacao_create' %}">+ Variação</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-3 py-lg-4">
+  {% for message in messages %}<div class="alert alert-{{ message.tags }} shadow-sm">{{ message }}</div>{% endfor %}
+
+  <!-- Toolbar (GET) -->
+  <div class="sticky-topbar border rounded-3 p-3 mb-3 toolbar">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-12 col-md-5">
+        <label class="form-label small text-muted mb-1" for="q">Buscar</label>
+        <div class="input-group">
+          <span class="input-group-text bg-white">🔎</span>
+          <input id="q" name="q" type="search" class="form-control" placeholder="Produto, SKU, variação (tamanho/cor)…" value="{{ sel.q|default:'' }}">
+          <button id="btnClear" class="btn btn-outline-secondary" type="button">Limpar</button>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small text-muted mb-1" for="empresa">Empresa</label>
+        <select id="empresa" name="empresa" class="form-select">
+          <option value="">Todas</option>
+          {% for e in empresas %}
+            <option value="{{ e.id }}" {% if sel.empresa|default:'' == e.id|stringformat:"s" %}selected{% endif %}>{{ e.nome_fantasia }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1" for="estoqueMin">Estoque mín.</label>
+        <input id="estoqueMin" type="number" min="0" step="1" class="form-control" placeholder="0">
+      </div>
+      <div class="col-12 col-md-2 text-end">
+        <div class="small text-muted">Variações: <span id="resCount">—</span></div>
+      </div>
+    </form>
+  </div>
+
+  {% if produtos %}
+  <div class="card-surface overflow-hidden">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead><tr>
+          <th style="width:18%">Empresa</th>
+          <th style="width:22%">Produto</th>
+          <th style="width:14%">SKU</th>
+          <th style="width:10%">Tamanho</th>
+          <th style="width:12%">Cor</th>
+          <th style="width:10%">Estoque</th>
+          <th style="width:7%">Custo</th>
+          <th style="width:7%">Preço</th>
+          <th class="text-end">Ficha</th>
+        </tr></thead>
+        <tbody id="tblBody">
+          {% for p in produtos %}
+            {% if p.variacoes.all %}
+              {% for v in p.variacoes.all %}
+              <tr class="row-item"
+                  data-emp="{{ p.empresa_id }}"
+                  data-empname="{{ p.empresa.nome_fantasia|lower }}"
+                  data-prod="{{ p.nome|lower }}"
+                  data-sku="{{ v.sku|lower }}"
+                  data-tam="{{ v.tamanho|lower }}"
+                  data-cor="{{ v.cor|lower }}"
+                  data-estoque="{{ v.estoque_atual|floatformat:0 }}">
+                <td>{{ p.empresa.nome_fantasia }}</td>
+                <td class="fw-semibold">{{ p.nome }}</td>
+                <td class="mono">{{ v.sku }}</td>
+                <td>{{ v.tamanho }}</td>
+                <td><span class="badge badge-soft">{{ v.cor }}</span></td>
+                <td>{{ v.estoque_atual|floatformat:0 }}</td>
+                <td>R$ {{ v.custo_unitario|floatformat:2 }}</td>
+                <td>R$ {{ v.preco_sugerido|floatformat:2 }}</td>
+                <td class="text-end">
+                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'camisas:ficha_list' v.pk %}">Abrir ficha</a>
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <!-- Produto sem variações ainda -->
+              <tr class="row-item"
+                  data-emp="{{ p.empresa_id }}"
+                  data-empname="{{ p.empresa.nome_fantasia|lower }}"
+                  data-prod="{{ p.nome|lower }}"
+                  data-sku=""
+                  data-tam=""
+                  data-cor=""
+                  data-estoque="0">
+                <td>{{ p.empresa.nome_fantasia }}</td>
+                <td class="fw-semibold">{{ p.nome }}</td>
+                <td colspan="5" class="text-muted">Sem variações cadastradas.</td>
+                <td class="text-end" colspan="2">
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'camisas:variacao_create' %}">+ Adicionar variação</a>
+                </td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+    <div class="empty">
+      <div class="h6 mb-1">Nenhum produto</div>
+      <div class="text-muted">Cadastre um produto e crie variações.</div>
+    </div>
+  {% endif %}
+</main>
+
+<script>
+(function(){
+  const q    = document.getElementById('q');
+  const emp  = document.getElementById('empresa');
+  const min  = document.getElementById('estoqueMin');
+  const clear= document.getElementById('btnClear');
+  const rows = Array.from(document.querySelectorAll('.row-item'));
+  const count= document.getElementById('resCount');
+  const norm = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+
+  function apply(){
+    const txt = norm(q.value);
+    const empVal = (emp.value||'').toString();
+    const minEst = parseFloat(min.value||'0');
+    let total = 0;
+    rows.forEach(r=>{
+      const estoque = parseFloat(r.dataset.estoque||'0');
+      const hitTxt  = !txt || norm(r.dataset.prod).includes(txt) || norm(r.dataset.sku).includes(txt) ||
+                      norm(r.dataset.cor).includes(txt) || norm(r.dataset.empname).includes(txt);
+      const hitEmp  = !empVal || (r.dataset.emp === empVal);
+      const hitEst  = isNaN(minEst) ? true : (estoque >= minEst);
+      const hit = hitTxt && hitEmp && hitEst;
+      r.classList.toggle('d-none', !hit);
+      if(hit) total++;
+    });
+    count.textContent = total;
+  }
+
+  [q, emp, min].forEach(el => el && el.addEventListener('input', apply));
+  emp && emp.addEventListener('change', apply);
+  clear && clear.addEventListener('click', (e)=>{ e.preventDefault(); q.value=''; min.value=''; emp.value=''; apply(); });
+
+  // primeira aplicação ao carregar
+  apply();
+})();
+</script>
+</body>
+</html>

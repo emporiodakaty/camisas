@@ -1,0 +1,114 @@
+{% load widget_tweaks %}
+
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Insumo • Camisas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    :root{--ink:#0f172a;--ring:rgba(37,99,235,.18);--g1:#f30c80;--g2:#f30c80;--base-font:14px;}
+    html{font-size:var(--base-font);}body{background:#f6f8fb;color:var(--ink);}
+    .nav-pro{background:linear-gradient(90deg,var(--g1),var(--g2));}
+    .card{border:none;box-shadow:0 10px 24px rgba(17,24,39,.08);border-radius:.9rem;}
+    .form-control:focus,.form-select:focus{box-shadow:0 0 0 .25rem var(--ring);border-color:#93c5fd}
+    .muted{color:#64748b}
+  </style>
+</head>
+<body>
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{% url 'camisas:insumo_list' %}">Insumos</a>
+    <div class="ms-auto"><a class="btn btn-sm btn-light" href="{% url 'camisas:insumo_list' %}">Voltar</a></div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
+
+  <div class="card p-3 bg-white">
+    <h2 class="h6 mb-3">Insumo</h2>
+    <form method="post" class="needs-validation" novalidate id="formInsumo">{% csrf_token %}
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Empresa</label>
+          {{ form.empresa|add_class:"form-select" }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Categoria</label>
+          {{ form.categoria|add_class:"form-select" }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Unidade</label>
+          {{ form.unidade|add_class:"form-select" }}
+        </div>
+        <div class="col-md-8">
+          <label class="form-label">Nome</label>
+          {{ form.nome|add_class:"form-control" }}
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Estoque atual</label>
+          {{ form.estoque_atual|add_class:"form-control"|attr:"data-mask=decimal4" }}
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Custo médio</label>
+          {{ form.custo_medio|add_class:"form-control"|attr:"data-mask=decimal4" }}
+        </div>
+        <div class="col-12 form-check">
+          {{ form.ativo }}
+          <label class="form-check-label">Ativo</label>
+        </div>
+      </div>
+
+      {% if cform %}
+      <hr class="my-4"/>
+      <div class="form-check my-2">
+        <input class="form-check-input" type="checkbox" name="nova_categoria" id="nova_categoria">
+        <label class="form-check-label" for="nova_categoria">Cadastrar nova categoria</label>
+      </div>
+      <div id="nova-cat" class="border rounded p-3" style="display:none;">
+        <h6>Nova Categoria</h6>
+        {{ cform.as_p }}
+      </div>
+      {% endif %}
+
+      <div class="d-flex gap-2 mt-3">
+        <button class="btn btn-primary">Salvar</button>
+        <a class="btn btn-outline-secondary" href="{% url 'camisas:insumo_list' %}">Cancelar</a>
+      </div>
+      <p class="muted small mt-2">Dica: entradas futuras ajustam o custo médio automaticamente.</p>
+    </form>
+  </div>
+</main>
+
+<script>
+(function(){
+  const form = document.getElementById('formInsumo');
+  // toggler nova categoria
+  const chk = document.getElementById('nova_categoria');
+  const box = document.getElementById('nova-cat');
+  if(chk && box){ chk.addEventListener('change', ()=> box.style.display = chk.checked ? 'block':'none'); }
+
+  // validação
+  form && form.addEventListener('submit', (e)=>{
+    if(!form.checkValidity()){ e.preventDefault(); e.stopPropagation(); form.classList.add('was-validated'); }
+    // normalizar decimais PT->EN (troca , por .)
+    form.querySelectorAll('[data-mask="decimal4"]').forEach(inp=>{
+      inp.value = inp.value.replace(/\./g,'').replace(',','.');
+    });
+  });
+
+  // máscara leve de decimais
+  document.addEventListener('input', (ev)=>{
+    const el = ev.target, mask = el.getAttribute('data-mask');
+    if(mask!=='decimal4') return;
+    let v = el.value.replace(/[^\d.,-]/g,'');
+    v = v.replace(',', '.');
+    const num = parseFloat(v||'');
+    if(!isNaN(num)) el.value = num.toLocaleString('pt-BR', {minimumFractionDigits:4, maximumFractionDigits:4});
+  });
+})();
+</script>
+</body>
+</html>

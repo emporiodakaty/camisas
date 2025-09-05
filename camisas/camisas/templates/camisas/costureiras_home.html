@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Módulo • Costureiras / Produção</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    :root{--ink:#0f172a;--muted:#64748b;--base-font:14px;}
+    html{font-size:var(--base-font);} body{background:#f6f8fb;color:var(--ink);}
+    .card-clean{border:none;border-radius:.9rem;box-shadow:0 10px 24px rgba(17,24,39,.08);}
+    .kpi{background:#fff;border:1px solid #e5e7eb;border-radius:.9rem;padding:.9rem 1.1rem}
+    .kpi .label{color:#64748b;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}
+    .kpi .value{font-weight:800;font-size:1.25rem}
+    .mini{font-size:.82rem;color:#64748b}
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-dark" style="background:linear-gradient(90deg,#000,#000)">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{% url 'camisas:home' %}">EMPÓRIO DA KATY</a>
+    <div class="ms-auto d-flex gap-2">
+      <a class="btn btn-sm btn-outline-light" href="{% url 'camisas:remessa_list' %}">Remessas</a>
+      <a class="btn btn-sm btn-outline-light" href="{% url 'camisas:costureira_list' %}">Costureiras</a>
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:op_create' %}">+ Nova OP</a>
+      <a class="btn btn-sm btn-outline-light" href="{% url 'logout' %}">Sair</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  <form class="row g-2 align-items-end mb-3" method="get">
+    <div class="col-12 col-md-4">
+      <label class="form-label mini">Empresa</label>
+      <select name="empresa" class="form-select">
+        <option value="">Todas</option>
+        {% for e in empresas %}
+          <option value="{{ e.id }}" {% if request.GET.empresa|default:'' == e.id|stringformat:"s" %}selected{% endif %}>
+            {{ e.nome_fantasia }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label mini">Início</label>
+      <input type="date" name="ini" value="{{ ini|date:'Y-m-d' }}" class="form-control">
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label mini">Fim</label>
+      <input type="date" name="fim" value="{{ fim|date:'Y-m-d' }}" class="form-control">
+    </div>
+    <div class="col-12 col-md-2 d-flex gap-2">
+      <button class="btn btn-primary flex-grow-1">Aplicar</button>
+      <a class="btn btn-outline-secondary" href="{% url 'camisas:costureiras_home' %}">Limpar</a>
+    </div>
+  </form>
+
+  <!-- KPIs -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3">
+      <div class="kpi">
+        <div class="label">Peças OK ({{ kpis.periodo }})</div>
+        <div class="value">{{ kpis.pecas_ok }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi">
+        <div class="label">Remessas</div>
+        <div class="value">{{ kpis.remessas }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi">
+        <div class="label">OPs</div>
+        <div class="value">{{ kpis.ops }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi">
+        <div class="label">Costureiras ativas</div>
+        <div class="value">{{ kpis.costureiras_ativas }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12 col-xl-6">
+      <div class="card-clean p-3">
+        <h2 class="h6 m-0 mb-2">Peças por costureira</h2>
+        <canvas id="chartCost" height="160"></canvas>
+      </div>
+    </div>
+    <div class="col-12 col-xl-6">
+      <div class="card-clean p-3">
+        <h2 class="h6 m-0 mb-2">Remessas recentes</h2>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead><tr><th>#</th><th>Costureira</th><th>Tipo</th><th>Data</th></tr></thead>
+            <tbody>
+              {% for r in recent %}
+              {% with dt=r.enviado_em|default:r.recebido_em %}
+              <tr>
+                <td>#{{ r.id }}</td>
+                <td>{{ r.costureira.nome }}</td>
+                <td>{{ r.get_tipo_display|default:"—" }}</td>
+                <td>{% if dt %}{{ dt|date:"d/m/Y H:i" }}{% else %}—{% endif %}</td>
+              </tr>
+              {% endwith %}
+              {% empty %}
+              <tr><td colspan="4" class="text-muted text-center">Sem registros.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function(){
+  // dados para o gráfico (já no contexto)
+  const labels = [{% for r in por_cost %}"{{ r.remessa__costureira__nome|escapejs }}",{% endfor %}];
+  const values = [{% for r in por_cost %}{{ r.total|default:0 }},{% endfor %}];
+
+  const ctx = document.getElementById('chartCost');
+  if (ctx && labels.length){
+    new Chart(ctx, {
+      type:'bar',
+      data:{ labels, datasets:[{ label:'Peças OK', data: values }] },
+      options:{ plugins:{ legend:{display:false} }, indexAxis:'y' }
+    });
+  }
+})();
+</script>
+</body>
+</html>
+

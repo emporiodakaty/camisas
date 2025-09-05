@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Clientes • Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    :root{ --ink:#0f172a; --muted:#64748b; --ring:rgba(37,99,235,.18); --g1:#f30c80; --g2:#f30c80; --base-font:14px; }
+    html{ font-size:var(--base-font);} body{ background:#f6f8fb; color:var(--ink); }
+    .nav-pro{ background:linear-gradient(90deg,var(--g1),var(--g2)); }
+    .card-clean{ border:none; border-radius:.9rem; box-shadow:0 10px 24px rgba(17,24,39,.08); }
+    .kpi{ background:#fff; border:1px solid #e5e7eb; border-radius:.9rem; padding:.9rem 1.1rem; }
+    .kpi .label{ color:var(--muted); font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; }
+    .kpi .value{ font-weight:800; font-size:1.25rem; }
+    .mini{ font-size:.8rem; color:var(--muted); }
+    .toolbar .form-control, .toolbar .form-select{ border-radius:.65rem; }
+    .toolbar .form-control:focus, .toolbar .form-select:focus{ box-shadow:0 0 0 .25rem var(--ring); border-color:#93c5fd; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{% url 'camisas:home' %}">EMPÓRIO DA KATY</a>
+    <div class="ms-auto d-flex gap-2">
+      <a class="btn btn-sm btn-outline-light" href="{% url 'camisas:home' %}">🏠 Início</a>
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:cliente_list' %}">Listar clientes</a>
+      <a class="btn btn-sm btn-primary" href="{% url 'camisas:cliente_create' %}">+ Adicionar cliente</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+
+  {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
+
+  <!-- Filtros por período (aplicados sobre pedidos) -->
+  <div class="bg-white border rounded-3 p-3 toolbar mb-3">
+    <form class="row g-3 align-items-end" method="get">
+      <div class="col-6 col-md-3">
+        <label class="form-label mini">Início</label>
+        <input type="date" name="ini" class="form-control" value="{{ filtro.ini|default:'' }}">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label mini">Fim</label>
+        <input type="date" name="fim" class="form-control" value="{{ filtro.fim|default:'' }}">
+      </div>
+      <div class="col-12 col-md-6 d-flex gap-2">
+        <button class="btn btn-primary flex-grow-1">Aplicar</button>
+        <a class="btn btn-outline-secondary" href="{% url 'camisas:clientes_home' %}">Limpar</a>
+      </div>
+    </form>
+  </div>
+
+  <!-- KPIs -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="kpi"><div class="label">Clientes (total)</div><div class="value">{{ kpis.clientes_total }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="kpi"><div class="label">Clientes ativos</div><div class="value">{{ kpis.clientes_ativos }}</div><div class="mini">Com pedidos no período</div></div></div>
+    <div class="col-6 col-lg-3"><div class="kpi"><div class="label">Pedidos (período)</div><div class="value">{{ kpis.qtd_pedidos_periodo }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="kpi"><div class="label">Receita (período)</div><div class="value">R$ {{ kpis.receita_periodo|floatformat:2 }}</div></div></div>
+  </div>
+
+  <!-- Recentes -->
+  <div class="card-clean p-3">
+    <div class="d-flex justify-content-between align-items-center">
+      <h2 class="h6 m-0">Clientes recentes</h2>
+      <a class="btn btn-sm btn-primary" href="{% url 'camisas:cliente_create' %}">+ Adicionar cliente</a>
+    </div>
+
+    {% if clientes_recent and clientes_recent|length %}
+      <div class="table-responsive mt-2">
+        <table class="table align-middle">
+          <thead>
+            <tr><th>Cliente</th><th>Contato</th><th>Último pedido</th><th>Pedidos</th><th>Receita total</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for c in clientes_recent %}
+              <tr>
+                <td class="fw-semibold">{{ c.nome|default:c }}</td>
+                <td class="text-muted mini">
+                  {% if c.email %}{{ c.email }}{% endif %}
+                  {% if c.telefone %} • {{ c.telefone }}{% endif %}
+                </td>
+                <td>
+                  {% if c.last_pedido %}
+                    {{ c.last_pedido|date:"d/m/Y H:i" }}
+                  {% else %}—{% endif %}
+                </td>
+                <td>{{ c.total_pedidos|default:0 }}</td>
+                <td>R$ {{ c.receita_total|default:0|floatformat:2 }}</td>
+                <td>
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'camisas:cliente_list' %}?q={{ c.nome|urlencode }}">Abrir</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="border rounded-3 p-4 text-center text-muted">Sem clientes com pedidos ainda.</div>
+    {% endif %}
+  </div>
+
+</main>
+
+</body>
+</html>

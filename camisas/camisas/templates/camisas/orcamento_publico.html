@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <title>Orçamento #{{ pedido.numero_orcamento|default:pedido.pk }}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    :root{--ink:#0f172a;--muted:#64748b;--g1:#ff9100;--g2:#ff9100;--base-font:14px;}
+    html{font-size:var(--base-font);} body{background:#f6f8fb;color:var(--ink);}
+    .paper{max-width:960px;margin:24px auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 10px 24px rgba(17,24,39,.08)}
+    .p-wrap{padding:28px}
+
+    /* Cabeçalho/brand + TÍTULO MENOR */
+    .brand{background:linear-gradient(90deg,var(--g1),var(--g2));color:#fff;padding:12px 18px;border-top-left-radius:12px;border-top-right-radius:12px}
+    .brand .fw-bold{font-size:1.05rem; line-height:1.15;}
+    .brand .small{font-size:.72rem; opacity:.9;}
+    .badge-soft{background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe; font-size:.72rem;}
+
+    /* Seções/infos EMPRESA & CLIENTE MENORES */
+    .section-title{font-size:.9rem; letter-spacing:.02em; margin-bottom:.25rem;}
+    .info-block{font-size:.82rem; line-height:1.28;}
+    .info-block .fw-semibold{font-size:.88rem;}
+
+    .small-muted{color:#64748b}
+
+    /* Tabela mais compacta */
+    .table{font-size:.82rem; margin-bottom:.75rem;}
+    .table thead th{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:#64748b;border-top:0}
+
+    .arte-box{border:1px dashed #cbd5e1;border-radius:10px;padding:12px;background:#fafbff}
+
+    /* AVISO MENOR */
+    .callout-warning{
+      background:#fffbea;border:1px solid #fde68a;border-left-width:4px;border-left-color:#f59e0b;
+      border-radius:10px;padding:10px;font-size:.82rem;line-height:1.35;
+    }
+    .callout-warning .fw-semibold{margin-bottom:.25rem;}
+    .callout-warning p{margin-bottom:.35rem;}
+    .callout-warning ul{margin-bottom:.35rem;padding-left:1.1rem;}
+    .callout-warning li{margin-bottom:.15rem;}
+
+    /* Modal */
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:1000}
+    .overlay[aria-hidden="false"]{display:block}
+    .modal-card{max-width:640px;margin:5vh auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.2)}
+    .modal-head{padding:16px 20px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between}
+    .modal-body{padding:16px 20px}
+    .btn-icon{border:0;background:transparent;font-size:22px;line-height:1;cursor:pointer}
+
+    /* Assinatura exibida menor */
+    .signature-img{max-height:90px;width:auto;object-fit:contain;}
+    .signature-wrap{max-width:420px;margin-inline:auto;}
+
+    /* Empresa | Cliente lado a lado ao imprimir */
+    .row-cols-print-2 > * { }
+    @media print{
+      .no-print{display:none!important}
+      body{background:#fff}
+      .paper{box-shadow:none;border:0;margin:0}
+      .brand{padding:8px 12px}
+      .brand .fw-bold{font-size:.98rem;}
+      .brand .small{font-size:.68rem;}
+      .row-cols-print-2{display:flex;flex-wrap:wrap;gap:.75rem;}
+      .row-cols-print-2 > *{flex:0 0 auto;width:calc(50% - .375rem);}
+      .section-title{font-size:.85rem;}
+      .info-block{font-size:.78rem;}
+      .info-block .fw-semibold{font-size:.84rem;}
+      .table{font-size:.78rem;}
+      .table thead th{font-size:.7rem;}
+      .signature-img{max-height:60px;}
+      .callout-warning{font-size:.72rem;padding:8px;border-radius:8px;}
+    }
+  </style>
+</head>
+<body>
+<div class="paper">
+  <div class="brand d-flex justify-content-between align-items-center">
+    <div>
+      <div class="fw-bold">{{ empresa.nome_fantasia }}</div>
+      <div class="text-white-50 small">Orçamento #{{ pedido.numero_orcamento|default:pedido.pk }} • {{ pedido.criado_em|date:"d/m/Y H:i" }}</div>
+    </div>
+    <span class="badge badge-soft">
+      {% if pedido.approval_status == 'APRV' %}Aprovado
+      {% elif pedido.approval_status == 'REJ' %}Recusado
+      {% else %}Pendente{% endif %}
+    </span>
+  </div>
+
+  <div class="p-wrap">
+    <!-- Empresa x Cliente -->
+    <div class="row row-cols-1 row-cols-md-2 row-cols-print-2 g-3 mb-3">
+      <div class="col">
+        <h2 class="section-title">Empresa</h2>
+        <div class="info-block">
+          <div class="fw-semibold">{{ empresa.nome_fantasia }}</div>
+          {% if empresa.cnpj %}<div>CNPJ: {{ empresa.cnpj }}</div>{% endif %}
+          {% if empresa.endereco %}<div>{{ empresa.endereco }}</div>{% endif %}
+          {% if empresa.cidade or empresa.uf %}<div>{{ empresa.cidade }}{% if empresa.uf %}/{{ empresa.uf }}{% endif %}</div>{% endif %}
+          {% if empresa.email %}<div>{{ empresa.email }}</div>{% endif %}
+          {% if empresa.telefone %}<div>{{ empresa.telefone }}</div>{% endif %}
+        </div>
+      </div>
+      <div class="col">
+        <h2 class="section-title">Cliente</h2>
+        <div class="info-block">
+          <div class="fw-semibold">{{ cliente }}</div>
+          {% if cliente.cpf_cnpj %}<div>CPF/CNPJ: {{ cliente.cpf_cnpj }}</div>{% endif %}
+          {% if cliente.endereco %}<div>{{ cliente.endereco }}</div>{% endif %}
+          {% if cliente.email %}<div>{{ cliente.email }}</div>{% endif %}
+          {% if cliente.telefone %}<div>{{ cliente.telefone }}</div>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Itens -->
+    <div class="table-responsive mb-2">
+      <table class="table align-middle">
+        <thead><tr><th>Produto</th><th>Variação</th><th>Qtd</th><th>Preço unit.</th><th>Subtotal</th></tr></thead>
+        <tbody>
+        {% for it in itens %}
+          <tr>
+            <td class="fw-semibold">{{ it.variacao.produto.nome }}</td>
+            <td>{{ it.variacao.tamanho }}/{{ it.variacao.cor }}</td>
+            <td>{{ it.quantidade }}</td>
+            <td>R$ {{ it.preco_unitario|floatformat:2 }}</td>
+            <td>R$ {{ it.subtotal|floatformat:2 }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5" class="text-center small-muted py-4">Sem itens.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Totais -->
+    <div class="row justify-content-end">
+      <div class="col-md-6">
+        <div class="border rounded-3 p-3">
+          <div class="d-flex justify-content-between"><span class="small-muted">Subtotal</span><span>R$ {{ subtotal|floatformat:2 }}</span></div>
+          <div class="d-flex justify-content-between"><span class="small-muted">Desconto ({{ pedido.desconto_percentual|default:0 }}%)</span><span>− R$ {{ val_desc|floatformat:2 }}</span></div>
+          <div class="d-flex justify-content-between"><span class="small-muted">Acréscimo ({{ pedido.acrescimo_percentual|default:0 }}%)</span><span>+ R$ {{ val_acr|floatformat:2 }}</span></div>
+          <hr class="my-2">
+          <div class="d-flex justify-content-between fw-bold"><span>Total</span><span>R$ {{ total|floatformat:2 }}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arte -->
+    <div class="mt-3">
+      <h3 class="section-title">Arte da camisa</h3>
+      {% if pedido.arte_has_file %}
+        <div class="arte-box text-center"><img src="{{ pedido.arte_url_safe }}" alt="Arte" style="max-width:100%;height:auto"></div>
+      {% else %}
+        <div class="arte-box text-center small-muted">Nenhuma arte anexada.</div>
+      {% endif %}
+    </div>
+
+    <!-- Aviso (compacto) -->
+    <div class="callout-warning mt-4">
+      <div class="fw-semibold">Atenção antes de aprovar</div>
+      <div class="small">
+        <p class="mb-2">A conferência e a aprovação deste orçamento são de <strong>total responsabilidade do cliente</strong>. Verifique cuidadosamente:</p>
+        <ul class="mb-2">
+          <li>Modelo, tamanhos e cores das peças, quantidades, preços e total final, prazos de produção/entrega e condições de pagamento, arte enviada (posição, cores, ortografia e proporções).</li>
+        </ul>
+        <p class="mb-0"><strong>Importante:</strong> ao clicar em <em>“Aprovar orçamento”</em>, o pedido segue <u>imediatamente para produção</u> e <u>não poderá ser alterado</u>. Qualquer mudança posterior exigirá um novo orçamento, podendo impactar prazos e valores.</p>
+      </div>
+    </div>
+
+    <!-- Feedback -->
+    {% if feedback %}
+      <div class="alert alert-info mt-3">{{ feedback }}</div>
+    {% endif %}
+
+    <!-- Assinatura (após aprovação) -->
+    {% if pedido.approval_has_signature %}
+      <div class="mt-3">
+        <h3 class="section-title">Assinatura do cliente</h3>
+        <div class="arte-box text-center signature-wrap">
+          <img src="{{ pedido.approval_signature_url_safe }}" alt="Assinatura do cliente" class="signature-img">
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Form de decisão -->
+    {% if pedido.approval_status == 'PEND' %}
+      <form id="formDecisao" method="post" class="no-print mt-4">
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Seu nome</label>
+            <input name="name" id="name" type="text" class="form-control" placeholder="Quem está aprovando?">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">E-mail</label>
+            <input name="email" type="email" class="form-control" placeholder="Opcional">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Comentário</label>
+            <textarea name="comment" class="form-control" rows="3" placeholder="Observações (opcional)"></textarea>
+          </div>
+        </div>
+
+        <div class="form-check mt-3">
+          <input class="form-check-input" type="checkbox" id="ack_terms" name="ack_terms" required>
+          <label class="form-check-label small" for="ack_terms">
+            Declaro que conferi todas as informações acima e estou ciente de que, ao aprovar, o pedido irá para produção sem possibilidade de alterações.
+          </label>
+        </div>
+
+        <!-- Hidden p/ assinatura -->
+        <input type="hidden" name="decision" id="decisionField" value="">
+        <input type="hidden" name="signature_png" id="signature_png">
+        <input type="hidden" name="tz" id="tz">
+        <input type="hidden" name="ua" id="ua">
+
+        <div class="d-flex gap-2 mt-3">
+          <button type="button" id="btnOpenSignature" class="btn btn-success">✅ Aprovar orçamento</button>
+          <button class="btn btn-outline-danger" name="decision" value="reject">🚫 Recusar</button>
+          <button type="button" class="btn btn-light" onclick="window.print()">Imprimir</button>
+        </div>
+      </form>
+    {% else %}
+      <div class="d-flex gap-2 mt-3 no-print">
+        <button class="btn btn-light" onclick="window.print()">Imprimir</button>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Modal Assinatura -->
+<div id="signatureOverlay" class="overlay" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="assTitle">
+    <div class="modal-head">
+      <h2 id="assTitle" class="h5 m-0">Aprovar orçamento</h2>
+      <button id="btnCloseSignature" class="btn-icon" aria-label="Fechar">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="mb-2">Assine no quadro abaixo e confirme o aceite dos termos.</p>
+      <div class="border rounded-3 p-2 bg-light">
+        <canvas id="sigCanvas" style="width:100%;height:220px;display:block;background:#fff;border-radius:8px"></canvas>
+        <div class="d-flex align-items-center gap-2 mt-2">
+          <button type="button" id="btnClear" class="btn btn-sm btn-outline-secondary">Limpar</button>
+          <small id="sigHint" class="text-danger d-none">Desenhe sua assinatura antes de confirmar.</small>
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <label class="form-label">Nome completo (para constar no termo)</label>
+        <input id="signerName" type="text" class="form-control" placeholder="Digite seu nome">
+      </div>
+      <div class="form-check mt-3">
+        <input class="form-check-input" type="checkbox" id="acceptTerms">
+        <label class="form-check-label" for="acceptTerms">Li e concordo com os termos do orçamento e autorizo o uso desta assinatura eletrônica.</label>
+      </div>
+
+      <div class="d-flex justify-content-end gap-2 mt-3">
+        <button type="button" id="btnCancel" class="btn btn-light">Cancelar</button>
+        <button type="button" id="btnConfirm" class="btn btn-primary">Confirmar aprovação</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.6/dist/signature_pad.umd.min.js"></script>
+<script>
+(function(){
+  const $ = (sel)=>document.querySelector(sel);
+
+  const form = $('#formDecisao');
+  const nameInput = $('#name');
+  const ackTerms = $('#ack_terms');
+
+  const overlay = $('#signatureOverlay');
+  const btnOpen = $('#btnOpenSignature');
+  const btnClose = $('#btnCloseSignature');
+  const btnCancel = $('#btnCancel');
+  const btnConfirm = $('#btnConfirm');
+  const btnClear = $('#btnClear');
+
+  const sigCanvas = $('#sigCanvas');
+  const sigHint = $('#sigHint');
+  const signerName = $('#signerName');
+  const acceptTerms = $('#acceptTerms');
+
+  const decisionField = $('#decisionField');
+  const sigField = $('#signature_png');
+  const tzField = $('#tz');
+  const uaField = $('#ua');
+
+  let pad;
+
+  function openModal(){
+    overlay.setAttribute('aria-hidden','false');
+    setTimeout(resizeCanvas, 40);
+    if(!pad){
+      pad = new SignaturePad(sigCanvas, { minWidth: 0.7, maxWidth: 2.5, throttle: 16, penColor: '#0f172a' });
+    } else {
+      pad.clear();
+    }
+    sigHint.classList.add('d-none');
+    if (!signerName.value && nameInput && nameInput.value) {
+      signerName.value = nameInput.value;
+    }
+  }
+  function closeModal(){
+    overlay.setAttribute('aria-hidden','true');
+    sigHint.classList.add('d-none');
+    if(pad) pad.clear();
+  }
+
+  function resizeCanvas(){
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    const rect = sigCanvas.getBoundingClientRect();
+    sigCanvas.width = rect.width * ratio;
+    sigCanvas.height = 220 * ratio;
+    const ctx = sigCanvas.getContext('2d');
+    ctx.scale(ratio, ratio);
+  }
+  window.addEventListener('resize', resizeCanvas);
+
+  btnOpen && btnOpen.addEventListener('click', openModal);
+  btnClose && btnClose.addEventListener('click', closeModal);
+  overlay && overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
+  btnCancel && btnCancel.addEventListener('click', closeModal);
+  btnClear && btnClear.addEventListener('click', ()=>{ pad && pad.clear(); sigHint.classList.add('d-none'); });
+
+  btnConfirm && btnConfirm.addEventListener('click', ()=>{
+    if(!pad || pad.isEmpty()){ sigHint.classList.remove('d-none'); return; }
+    if(!acceptTerms.checked){ alert('Você precisa aceitar os termos no modal.'); return; }
+    if(ackTerms && !ackTerms.checked){ alert('Você precisa marcar a confirmação de conferência.'); return; }
+
+    if(nameInput && !nameInput.value && signerName.value){
+      nameInput.value = signerName.value;
+    }
+
+    decisionField.value = 'approve';
+    sigField.value = pad.toDataURL('image/png');
+    tzField.value = (Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+    uaField.value = (navigator.userAgent || '');
+
+    if(typeof form.requestSubmit === 'function'){
+      form.requestSubmit();
+    } else {
+      form.submit();
+    }
+  });
+})();
+</script>
+</body>
+</html>

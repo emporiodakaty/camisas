@@ -1,0 +1,86 @@
+{% load widget_tweaks %}
+
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Ordem de Produção • Camisas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    :root{--ink:#0f172a;--ring:rgba(37,99,235,.18);--g1:#f30c80;--g2:#f30c80;--base-font:14px;}
+    html{font-size:var(--base-font);}body{background:#f6f8fb;color:var(--ink);}
+    .nav-pro{background:linear-gradient(90deg,var(--g1),var(--g2));}
+    .card{border:none;box-shadow:0 10px 24px rgba(17,24,39,.08);border-radius:.9rem;}
+    .form-control:focus{box-shadow:0 0 0 .25rem var(--ring);border-color:#93c5fd}
+    .muted{color:#64748b}
+  </style>
+</head>
+<body>
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{% url 'camisas:home' %}">Camisas</a>
+    <div class="ms-auto"><a class="btn btn-sm btn-light" href="{% url 'camisas:produto_list' %}">Produtos</a></div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
+  <div class="card p-3 bg-white">
+    <h2 class="h6 mb-3">Nova Ordem de Produção</h2>
+    <form method="post" class="needs-validation" novalidate id="formOP">{% csrf_token %}
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Empresa</label>
+          {{ form.empresa|add_class:"form-select" }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Variação</label>
+          {{ form.variacao|add_class:"form-select" }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Quantidade</label>
+          {{ form.quantidade|add_class:"form-control"|attr:"data-mask=decimal2" }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Custo mão de obra (R$)</label>
+          {{ form.custo_mao_de_obra|add_class:"form-control"|attr:"data-mask=money" }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Custo indireto rateado (R$)</label>
+          {{ form.custo_indireto_rateado|add_class:"form-control"|attr:"data-mask=money" }}
+        </div>
+        <div class="col-md-12">
+          <label class="form-label">Observação</label>
+          {{ form.observacao|add_class:"form-control" }}
+        </div>
+      </div>
+      <div class="d-flex gap-2 mt-3">
+        <button class="btn btn-success">Processar OP</button>
+        <a class="btn btn-outline-secondary" href="{% url 'camisas:home' %}">Cancelar</a>
+      </div>
+      <p class="muted mt-3">Ao processar, o sistema consome os insumos da ficha técnica e entra a produção no estoque, atualizando o custo unitário.</p>
+    </form>
+  </div>
+</main>
+
+<script>
+(function(){
+  const form = document.getElementById('formOP');
+  const unmask = s => s.replace(/\./g,'').replace(',','.').replace(/[^\d.-]/g,'');
+  form && form.addEventListener('submit', (e)=>{
+    if(!form.checkValidity()){ e.preventDefault(); e.stopPropagation(); form.classList.add('was-validated'); }
+    form.querySelectorAll('[data-mask="money"],[data-mask="decimal2"]').forEach(i=> i.value = unmask(i.value));
+  });
+  document.addEventListener('input',(ev)=>{
+    const el=ev.target, m=el.getAttribute('data-mask'); if(!m) return;
+    let v = el.value.replace(/[^\d.,-]/g,'').replace(',', '.'); const num = parseFloat(v||'');
+    if(!isNaN(num)){
+      const opts = {minimumFractionDigits:2, maximumFractionDigits:2};
+      el.value = num.toLocaleString('pt-BR', opts);
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <title>Cotação Concorrente #{{ cot.pk }}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <style>
+    :root{--ink:#0f172a;--muted:#64748b;--line:#d1d5db;--bghead:#f3f4f6;--base:12.6px}
+    html{font-size:var(--base)}
+    body{background:#fff;color:var(--ink);margin:12px}
+    table{width:100%;border-collapse:collapse}
+    .t td,.t th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}
+    .t th{background:var(--bghead);text-transform:uppercase;letter-spacing:.03em;font-size:.78rem;color:#334155}
+    .no-border td,.no-border th{border:0}
+    .center{text-align:center} .right{text-align:right}
+    .muted{color:var(--muted)} .small{font-size:.86rem}
+    .wrap{word-break:break-word} .nowrap{white-space:nowrap}
+
+    /* Itens: colunas fixas p/ caber em 1 página */
+    .t-items{table-layout:fixed;font-size:.92rem}
+    .t-items .c-item{width:26%}
+    .t-items .c-desc{width:42%}
+    .t-items .c-un{width:8%}
+    .t-items .c-qtd{width:8%}
+    .t-items .c-vu{width:8%}
+    .t-items .c-tot{width:8%}
+
+    /* Totais */
+    .t-totais td{padding:6px 8px}
+    .t-totais .grand{font-weight:700}
+
+    /* Assinaturas */
+    .sig-box{height:70px;display:flex;flex-direction:column;justify-content:flex-end}
+    .sig-line{border-top:1px solid #000;padding-top:4px;text-align:center;font-size:.9rem}
+
+    @media print{
+      @page{size:A4;margin:10mm}
+      body{margin:0}
+      thead{display:table-header-group}
+      tfoot{display:table-footer-group}
+      tr,td,th{page-break-inside:avoid}
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TÍTULO -->
+  <table class="t no-border" aria-label="Título">
+    <tbody>
+      <tr>
+        <td class="center" style="font-size:1.15rem;font-weight:700;letter-spacing:.02em">
+          COTAÇÃO DE PREÇOS
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- IDENTIFICAÇÃO (apenas Cotação e Validade) -->
+  <table class="t" aria-label="Identificação" style="margin-top:6px">
+    <thead>
+      <tr><th colspan="2">Identificação</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="width:60%"><strong>Cotação:</strong></td>
+        <td style="width:40%">
+          {% if cot.validade %}
+            <strong>Validade:</strong> {{ cot.validade|date:"d/m/Y" }}
+          {% else %}
+            <span class="muted">Validade não informada</span>
+          {% endif %}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- EMPRESA / CLIENTE -->
+  <table class="t" aria-label="Partes" style="margin-top:6px">
+    <thead>
+      <tr>
+        <th style="width:50%">Empresa (Concorrente)</th>
+        <th style="width:50%">Cliente</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="wrap">
+          <div><strong>{{ cot.empresa_nome }}</strong></div>
+          {% if cot.cnpj %}<div class="small">CNPJ: {{ cot.cnpj }}</div>{% endif %}
+          {% if cot.email %}<div class="small">{{ cot.email }}</div>{% endif %}
+          {% if cot.telefone %}<div class="small">{{ cot.telefone }}</div>{% endif %}
+        </td>
+        <td class="wrap">
+          <div><strong>{{ cliente }}</strong></div>
+          {% if cliente.cpf_cnpj %}<div class="small">CPF/CNPJ: {{ cliente.cpf_cnpj }}</div>{% endif %}
+          {% if cliente.email %}<div class="small">{{ cliente.email }}</div>{% endif %}
+          {% if cliente.telefone %}<div class="small">{{ cliente.telefone }}</div>{% endif %}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ITENS -->
+  <table class="t t-items" aria-label="Itens" style="margin-top:6px">
+    <thead>
+      <tr>
+        <th class="c-item">Item</th>
+        <th class="c-desc">Descrição</th>
+        <th class="c-un center">Unid.</th>
+        <th class="c-qtd right">Qtd</th>
+        <th class="c-vu right">V. Unit</th>
+        <th class="c-tot right">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in cot.itens.all %}
+      <tr>
+        <td class="wrap"><strong>{{ it.item_nome }}</strong></td>
+        <td class="wrap">{{ it.descricao|default:"—" }}</td>
+        <td class="center nowrap">{{ it.unidade }}</td>
+        <td class="right nowrap">{{ it.quantidade|floatformat:2 }}</td>
+        <td class="right nowrap">R$ {{ it.valor_unitario|floatformat:2 }}</td>
+        <td class="right nowrap">R$ {{ it.subtotal|floatformat:2 }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="center muted">Sem itens.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- TOTAIS -->
+  <table class="t t-totais" aria-label="Totais" style="margin-top:6px">
+    <tbody>
+      <tr>
+        <td style="width:70%; border:0"></td>
+        <td class="right" style="width:15%">Subtotal</td>
+        <td class="right" style="width:15%">R$ {{ subtotal|floatformat:2 }}</td>
+      </tr>
+      <tr>
+        <td style="border:0"></td>
+        <td class="right" style="font-weight:700">Total Geral</td>
+        <td class="right" style="font-weight:700">R$ {{ total|floatformat:2 }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- OBSERVAÇÕES -->
+  {% if cot.observacao %}
+  <table class="t" aria-label="Observações" style="margin-top:6px">
+    <thead><tr><th>Observações</th></tr></thead>
+    <tbody><tr><td class="wrap">{{ cot.observacao }}</td></tr></tbody>
+  </table>
+  {% endif %}
+
+  <!-- NOTA -->
+  <table class="t no-border" aria-label="Nota" style="margin-top:4px">
+    <tbody><tr><td class="small muted"></td></tr></tbody>
+  </table>
+
+  <!-- ASSINATURAS -->
+  <table class="t" aria-label="Assinaturas" style="margin-top:12px">
+    <thead>
+      <tr>
+        <th>Assinaturas</th>
+        <th>Data</th>
+        <th>Carimbo (opcional)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <div class="sig-box">
+            <div class="sig-line">Empresa</div>
+          </div>
+        </td>
+        <td class="center" style="width:160px">____ / ____ / ______</td>
+        <td style="width:220px">&nbsp;</td>
+      </tr>
+      <tr>
+        <td>
+          <div class="sig-box">
+            <div class="sig-line">Cliente / Responsável</div>
+          </div>
+        </td>
+        <td class="center">____ / ____ / ______</td>
+        <td>&nbsp;</td>
+      </tr>
+    </tbody>
+  </table>
+
+</body>
+</html>

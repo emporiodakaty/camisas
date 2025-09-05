@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <title>Verificação de Assinatura</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif;padding:24px;color:#0f172a;background:#f8fafc}
+    .card{max-width:720px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px;box-shadow:0 8px 22px rgba(17,24,39,.06)}
+    .ok{color:#065f46;background:#ecfdf5;border:1px solid #a7f3d0;padding:.3rem .5rem;border-radius:999px;display:inline-block}
+    .bad{color:#991b1b;background:#fef2f2;border:1px solid #fecaca;padding:.3rem .5rem;border-radius:999px;display:inline-block}
+    .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+  </style>
+</head>
+<body>
+  <div class="card">
+    {% if valid %}
+      <h1 class="ok">Assinatura válida</h1>
+      <p><strong>Pedido:</strong> {{ pedido_id }}</p>
+      <p><strong>Papel:</strong> {{ role }}</p>
+      <p><strong>Assinado por:</strong> {{ assinado_por }}</p>
+      <p><strong>Data/Hora:</strong> {{ signed_at }}</p>
+      <p><strong>Hash:</strong> <span class="mono">{{ hash }}</span></p>
+    {% else %}
+      <h1 class="bad">Assinatura inválida</h1>
+      <p>Não encontramos uma assinatura válida com os parâmetros fornecidos.</p>
+      <p><strong>Hash consultado:</strong> <span class="mono">{{ hash }}</span></p>
+    {% endif %}
+  </div>
+</body>
+</html>

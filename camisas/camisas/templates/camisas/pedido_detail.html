@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Pedido #{{ pedido.pk }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+
+  <style>
+    :root{--ink:#0f172a;--muted:#64748b;--g1:#f30c80;--g2:#f30c80;--ring:rgba(37,99,235,.18);--base-font:14px;}
+    html{font-size:var(--base-font);} body{background:#f6f8fb;color:var(--ink);}
+    .nav-pro{background:linear-gradient(90deg,var(--g1),var(--g2));}
+    .card{border:none;box-shadow:0 10px 24px rgba(17,24,39,.08);border-radius:.9rem;}
+    .table thead th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#64748b;border-top:0}
+    .badge{font-weight:600}
+    .totals{background:#fff;border:1px solid #e5e7eb;border-radius:.8rem;padding:.75rem 1rem}
+    .mini{font-size:.85rem;color:var(--muted)}
+    .sig-wrap{display:flex;justify-content:center}
+    .sig-img{max-height:120px;width:auto;object-fit:contain;border:1px solid #e5e7eb;border-radius:.5rem;background:#fff;padding:6px}
+    .pill{display:inline-block;padding:.15rem .5rem;border-radius:999px;font-size:.72rem;font-weight:600;border:1px solid rgba(0,0,0,.08);background:#f8fafc;color:#334155}
+  </style>
+</head>
+<body>
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{% url 'camisas:pedido_list' %}">Pedidos</a>
+    <div class="ms-auto d-flex gap-2">
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:pedido_list' %}">Voltar</a>
+      <a class="btn btn-sm btn-outline-dark" href="{% url 'camisas:cotacao_concorrente_create' pedido.pk %}">Cotação Concorrente</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
+
+  <!-- Cabeçalho -->
+  <div class="card p-3 bg-white mb-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h1 class="h5 mb-1">Pedido #{{ pedido.pk }}</h1>
+        <div class="mini">
+          Empresa: {{ pedido.empresa.nome_fantasia }} • Cliente: {{ pedido.cliente.nome }} •
+          Criado em: {{ pedido.criado_em|date:"d/m/Y H:i" }}
+          {% if pedido.numero_orcamento %} • Nº Orçamento: <strong>{{ pedido.numero_orcamento }}</strong>{% endif %}
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        {% with st=pedido.status %}
+          <span class="badge {% if st == 'FAT' %}text-bg-success{% elif st == 'PROD' %}text-bg-primary{% elif st == 'PEN' %}text-bg-warning{% elif st == 'ORC' %}text-bg-secondary{% else %}text-bg-dark{% endif %}">
+            {{ pedido.get_status_display }}
+          </span>
+        {% endwith %}
+      </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 mt-3">
+      <a class="btn btn-sm btn-warning" href="{% url 'camisas:pedido_update' pedido.pk %}">Editar</a>
+      <a class="btn btn-sm btn-success" href="{% url 'camisas:pedido_orcamento' pedido.pk %}" target="_blank" rel="noopener">Ver/Imprimir Orçamento</a>
+      <a class="btn btn-sm btn-info" href="{% url 'camisas:pedido_gerar_ops' pedido.pk %}">Gerar OPs</a>
+      <a class="btn btn-sm btn-outline-dark" href="{% url 'camisas:pedido_cotacao_precos' pedido.pk %}" target="_blank" rel="noopener">Cotação de Preços</a>
+      <a class="btn btn-sm btn-outline-dark" href="{% url 'camisas:pedido_gerar_remessa' pedido.pk %}" title="Gerar remessa da costureira a partir deste pedido">Gerar remessa</a>
+      <a class="btn btn-sm btn-dark" href="{% url 'camisas:pedido_enviar_arte' pedido.pk %}">Enviar Arte</a>
+      <a class="btn btn-sm btn-outline-primary" href="{% url 'camisas:coleta_criar' pedido.pk %}">Coleta de Tamanhos</a>
+      {% if pedido.status != 'FAT' %}
+        <a class="btn btn-sm btn-primary" href="{% url 'camisas:pedido_faturar' pedido.pk %}">Faturar</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Linha com Aprovação + Arte -->
+  <div class="row g-3 mb-3">
+    <!-- Aprovação do orçamento -->
+    <div class="col-12 col-lg-6">
+      <div class="card p-3 bg-white h-100">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h2 class="h6 m-0">Aprovação do orçamento</h2>
+          <span class="badge
+            {% if pedido.approval_status == 'APRV' %}text-bg-success
+            {% elif pedido.approval_status == 'REJ' %}text-bg-danger
+            {% else %}text-bg-secondary{% endif %}">
+            {{ pedido.get_approval_status_display }}
+          </span>
+        </div>
+        <div class="mini mb-2">
+          {% if pedido.validade %}Validade: {{ pedido.validade|date:"d/m/Y" }} • {% endif %}
+          Link público abaixo (envie ao cliente):
+        </div>
+
+        {% url 'camisas:orcamento_publico' token=pedido.approval_token as public_path %}
+        <div class="input-group">
+          <input id="approvalLink" type="text" class="form-control"
+                 value="{{ request.scheme }}://{{ request.get_host }}{{ public_path }}" readonly>
+          <button id="btnCopyLink" class="btn btn-outline-secondary" type="button">Copiar</button>
+          <a class="btn btn-outline-primary" target="_blank" rel="noopener" href="{{ public_path }}">Abrir</a>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-2">
+          <button id="btnWA" class="btn btn-success btn-sm" type="button"
+            {% if not pedido.cliente.telefone %}disabled title="Cliente sem telefone cadastrado"{% endif %}>
+            Enviar WhatsApp
+          </button>
+          <button id="btnShare" class="btn btn-dark btn-sm" type="button">Compartilhar (nativo)</button>
+        </div>
+
+        {% if pedido.approval_decided_at or pedido.approval_status != 'PEND' %}
+          <hr class="my-3">
+          <div class="mini text-uppercase mb-1">Informações da decisão</div>
+          <ul class="list-unstyled mini mb-2">
+            <li><strong>Resultado:</strong> {{ pedido.get_approval_status_display }}</li>
+            <li><strong>Decidido em:</strong>
+              {% if pedido.approval_decided_at %}
+                {{ pedido.approval_decided_at|date:"d/m/Y H:i" }}
+              {% else %}—{% endif %}
+            </li>
+            <li><strong>Por:</strong>
+              {{ pedido.approval_name|default:pedido.cliente.nome }}
+              {% with em=pedido.approval_email|default:pedido.cliente.email %}{% if em %} ({{ em }}){% endif %}{% endwith %}
+            </li>
+            <li><strong>IP:</strong> {{ pedido.approval_decision_ip|default:"—" }}</li>
+            {% if pedido.approval_comment %}<li><strong>Comentário:</strong> {{ pedido.approval_comment }}</li>{% endif %}
+          </ul>
+
+          {% if pedido.approval_has_signature %}
+            <div class="mini text-uppercase mb-1">Assinatura do cliente</div>
+            <div class="sig-wrap mb-2">
+              <img class="sig-img" src="{{ pedido.approval_signature_url_safe }}" alt="Assinatura do cliente">
+            </div>
+          {% endif %}
+        {% endif %}
+
+        {% if pedido.condicoes %}
+          <hr>
+          <div class="mini text-uppercase">Condições</div>
+          <div style="white-space:pre-line">{{ pedido.condicoes }}</div>
+        {% endif %}
+
+        {% if pedido.approval_status == 'REJ' %}
+          <hr>
+          <div class="alert alert-danger small mb-2">
+            Este orçamento foi <strong>recusado</strong>. Você pode reabrir para editar e reenviar:
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            <form method="post" action="{% url 'camisas:pedido_reabrir_orcamento' pedido.pk %}"
+                  onsubmit="return confirm('Reabrir orçamento mantendo o mesmo link?');">
+              {% csrf_token %}<input type="hidden" name="novo" value="0">
+              <button class="btn btn-sm btn-outline-secondary" type="submit">Reabrir (mesmo link)</button>
+            </form>
+            <form method="post" action="{% url 'camisas:pedido_reabrir_orcamento' pedido.pk %}"
+                  onsubmit="return confirm('Gerar um NOVO link de aprovação? O link antigo deixará de funcionar.');">
+              {% csrf_token %}<input type="hidden" name="novo" value="1">
+              <button class="btn btn-sm btn-outline-danger" type="submit">Reabrir com NOVO link</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Arte da camisa -->
+    <div class="col-12 col-lg-6">
+      <div class="card p-3 bg-white h-100">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h2 class="h6 m-0">Arte da camisa</h2>
+          {% if pedido.arte_has_file %}<span class="mini">Atualize a arte se necessário</span>{% endif %}
+        </div>
+
+        {% if pedido.arte_has_file %}
+          <div class="mb-3 text-center">
+            <img src="{{ pedido.arte_url_safe }}" alt="Arte do pedido"
+                 style="max-width:100%;height:auto;border-radius:.6rem;border:1px solid #e5e7eb;">
+          </div>
+        {% else %}
+          <div class="mb-3 text-center text-muted">Nenhuma arte anexada.</div>
+        {% endif %}
+
+        <form class="d-flex gap-2 align-items-center" method="post"
+              enctype="multipart/form-data"
+              action="{% url 'camisas:pedido_upload_arte' pedido.pk %}">
+          {% csrf_token %}
+          <input type="file" name="arte" accept="image/*" class="form-control" required>
+          <button class="btn btn-dark" type="submit">{% if pedido.arte_has_file %}Trocar{% else %}Anexar{% endif %} arte</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Coleta de tamanhos (card próprio) -->
+  <div class="row g-3 mb-3">
+    <div class="col-12">
+      <div class="card p-3 bg-white">
+        {% with coleta_obj=coleta|default:pedido.coletas.last %}
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="d-flex align-items-center gap-2">
+            <h2 class="h6 m-0">Coleta de tamanhos</h2>
+            {% if coleta_obj %}
+              <span class="pill">{{ coleta_obj.get_modo_display }}</span>
+              {% if coleta_obj.concluido_em %}
+                <span class="badge text-bg-success">Concluída</span>
+              {% elif coleta_obj.expiracao and coleta_obj.expiracao|date:"U" < now|date:"U" %}
+                <span class="badge text-bg-danger">Expirada</span>
+              {% else %}
+                <span class="badge text-bg-secondary">Pendente</span>
+              {% endif %}
+            {% endif %}
+          </div>
+          <div class="d-flex gap-2">
+            {% if coleta_obj %}
+              <a class="btn btn-sm btn-outline-dark" href="{% url 'camisas:coleta_gerenciar' coleta_obj.id %}">Gerenciar</a>
+            {% endif %}
+            <a class="btn btn-sm btn-primary" href="{% url 'camisas:coleta_criar' pedido.pk %}">{% if coleta_obj %}Nova coleta{% else %}Criar link{% endif %}</a>
+          </div>
+        </div>
+
+        {% if coleta_obj %}
+          {% url 'camisas:coleta_public' token=coleta_obj.token as coleta_public_path %}
+          <div class="mini mb-1">Link público para o cliente preencher:</div>
+          <div class="input-group mb-2">
+            <input id="coletaLink" type="text" class="form-control"
+                   value="{{ request.scheme }}://{{ request.get_host }}{{ coleta_public_path }}" readonly>
+            <button id="btnCopyColeta" class="btn btn-outline-secondary" type="button">Copiar</button>
+            <a class="btn btn-outline-primary" target="_blank" rel="noopener" href="{{ coleta_public_path }}">Abrir</a>
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            <button id="btnWACol" class="btn btn-success btn-sm" type="button"
+              {% if not pedido.cliente.telefone %}disabled title="Cliente sem telefone cadastrado"{% endif %}>
+              Enviar WhatsApp
+            </button>
+            <button id="btnShareCol" class="btn btn-dark btn-sm" type="button">Compartilhar (nativo)</button>
+          </div>
+
+          {% if coleta_obj.concluido_em %}
+            <hr class="my-3">
+
+            {# ======= ÁREA IMPRESSA DA COLETA ======= #}
+            <div id="coletaPrintArea"
+                 data-empresa="{{ pedido.empresa.nome_fantasia }}"
+                 data-pedido="{{ pedido.pk }}"
+                 data-cliente="{{ pedido.cliente.nome }}"
+                 data-modo="{{ coleta_obj.get_modo_display|default:'—' }}"
+                 data-recebido="{{ coleta_obj.concluido_em|date:'d/m/Y H:i'|default:'—' }}">
+
+              <div class="mini text-uppercase">Recebido do cliente</div>
+              <div class="mini">
+                Nome: {{ coleta_obj.cliente_nome|default:"—" }}
+                {% if coleta_obj.cliente_email %} • {{ coleta_obj.cliente_email }}{% endif %}
+                • {{ coleta_obj.concluido_em|date:"d/m/Y H:i" }}
+              </div>
+
+              {% if coleta_obj.payload.tipo == 'SIMPLES' %}
+                <div class="table-responsive mt-2">
+                  <table class="table align-middle">
+                    <thead><tr><th>Tamanho</th><th class="text-end">Qtd</th></tr></thead>
+                    <tbody>
+                      {% for row in coleta_obj.payload.tamanhos %}
+                        <tr><td>{{ row.tamanho }}</td><td class="text-end">{{ row.qtd }}</td></tr>
+                      {% endfor %}
+                    </tbody>
+                    <tfoot><tr class="fw-bold"><td>Total</td><td class="text-end">{{ coleta_obj.payload.total }}</td></tr></tfoot>
+                  </table>
+                </div>
+
+              {% elif coleta_obj.payload.tipo == 'NOMES' %}
+                <div class="table-responsive mt-2">
+                  <table class="table align-middle">
+                    <thead><tr><th>Nome</th><th>Número</th><th>Tamanho</th></tr></thead>
+                    <tbody>
+                      {% for p in coleta_obj.payload.pessoas %}
+                        <tr><td>{{ p.nome }}</td><td>{{ p.numero|default:"—" }}</td><td>{{ p.tamanho }}</td></tr>
+                      {% endfor %}
+                    </tbody>
+                    <tfoot><tr class="fw-bold"><td colspan="2">Total</td><td>{{ coleta_obj.payload.total }}</td></tr></tfoot>
+                  </table>
+                </div>
+
+              {% elif coleta_obj.payload.tipo == 'TIME' %}
+                <div class="table-responsive mt-2">
+                  <table class="table align-middle">
+                    <thead><tr><th>Nome</th><th>Número</th><th>Tamanho</th></tr></thead>
+                    <tbody>
+                      {% for j in coleta_obj.payload.jogadores %}
+                        <tr><td>{{ j.nome|default:"—" }}</td><td>{{ j.numero|default:"—" }}</td><td>{{ j.tamanho|default:"—" }}</td></tr>
+                      {% endfor %}
+                    </tbody>
+                    <tfoot><tr class="fw-bold"><td colspan="2">Total</td><td>{{ coleta_obj.payload.total }}</td></tr></tfoot>
+                  </table>
+                </div>
+              {% endif %}
+
+              {% if coleta_obj.obs_cliente %}
+                <div class="mini mt-2"><strong>Obs. do cliente:</strong> {{ coleta_obj.obs_cliente }}</div>
+              {% endif %}
+            </div>
+            {# ======= /ÁREA IMPRESSA DA COLETA ======= #}
+
+            <div class="d-flex justify-content-end mt-2">
+              <button type="button" class="btn btn-outline-dark btn-sm" onclick="printColeta()">Imprimir coleta</button>
+            </div>
+
+          {% else %}
+            {% if coleta_obj.expiracao %}
+              <div class="mini mt-2">Expira em: {{ coleta_obj.expiracao|date:"d/m/Y H:i" }}</div>
+            {% endif %}
+          {% endif %}
+        {% else %}
+          <div class="mini text-muted">Nenhuma coleta criada ainda. Clique em <strong>Criar link</strong> para gerar um link público e enviar ao cliente.</div>
+        {% endif %}
+        {% endwith %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Itens e totais -->
+  <div class="card p-3 bg-white">
+    <h2 class="h6 mb-3">Itens</h2>
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th style="width:36%">Produto</th>
+            <th style="width:16%">Variação</th>
+            <th style="width:12%">Qtd</th>
+            <th style="width:18%">Preço unit.</th>
+            <th style="width:18%">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in itens %}
+          <tr>
+            <td class="fw-semibold">{{ it.variacao.produto.nome }}</td>
+            <td>{{ it.variacao.tamanho }}/{{ it.variacao.cor }}</td>
+            <td>{{ it.quantidade }}</td>
+            <td>R$ {{ it.preco_unitario|floatformat:2 }}</td>
+            <td>R$ {{ it.subtotal|floatformat:2 }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" class="text-center text-muted py-4">Sem itens.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="row justify-content-end mt-2">
+      <div class="col-md-5">
+        <div class="totals">
+          <div class="d-flex justify-content-between"><span class="text-muted">Subtotal</span><span>R$ {{ subtotal|floatformat:2 }}</span></div>
+          <div class="d-flex justify-content-between"><span class="text-muted">Desconto ({{ pedido.desconto_percentual|default:0 }}%)</span><span>− R$ {{ val_desc|floatformat:2 }}</span></div>
+          <div class="d-flex justify-content-between"><span class="text-muted">Acréscimo ({{ pedido.acrescimo_percentual|default:0 }}%)</span><span>+ R$ {{ val_acr|floatformat:2 }}</span></div>
+          <hr class="my-2">
+          <div class="d-flex justify-content-between fw-bold"><span>Total</span><span>R$ {{ total|floatformat:2 }}</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function(){
+  // ----- copiar link aprovação -----
+  const btnCopy = document.getElementById('btnCopyLink');
+  const $link   = document.getElementById('approvalLink');
+  btnCopy && btnCopy.addEventListener('click', async ()=>{
+    try{ await navigator.clipboard.writeText($link.value); }
+    catch(e){ $link.select(); document.execCommand('copy'); }
+    btnCopy.innerText='Copiado!'; setTimeout(()=> btnCopy.innerText='Copiar', 1400);
+  });
+
+  // WhatsApp + Share (aprovação)
+  const btnWA    = document.getElementById('btnWA');
+  const btnShare = document.getElementById('btnShare');
+
+  const pedidoId     = "{{ pedido.pk }}";
+  const clienteNome  = "{{ pedido.cliente.nome|escapejs }}";
+  const rawPhone     = "{{ pedido.cliente.telefone|default_if_none:''|escapejs }}";
+  const validadeTxt  = "{{ pedido.validade|date:'d/m/Y'|default:'—' }}";
+  const totalNum     = parseFloat(("{{ total|floatformat:2 }}").replace(',', '.')) || 0;
+  const totalBR      = totalNum.toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+  const publicUrl    = $link ? $link.value : location.href;
+
+  function normalizePhoneBR(phone){
+    const digits = (phone || '').replace(/\D/g,'');
+    if(!digits) return "";
+    return digits.startsWith('55') ? digits : '55' + digits;
+  }
+  function buildMsg(){
+    return `Olá ${clienteNome}! 👋
+
+Segue seu orçamento #${pedidoId}.
+Total: ${totalBR}
+Validade: ${validadeTxt}
+
+Para APROVAR, clique no link:
+${publicUrl}
+
+Qualquer dúvida, pode responder por aqui. 😉`;
+  }
+  btnWA && btnWA.addEventListener('click', ()=>{
+    const phone = normalizePhoneBR(rawPhone);
+    if(!phone){ alert('Telefone do cliente não cadastrado.'); return; }
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(buildMsg())}`;
+    window.location.href = url;
+  });
+  btnShare && btnShare.addEventListener('click', async ()=>{
+    const text = buildMsg();
+    if(navigator.share){
+      try{ await navigator.share({ title:`Orçamento #${pedidoId}`, text, url: publicUrl }); }catch(e){}
+    }else{
+      try{ await navigator.clipboard.writeText(text); }catch(e){}
+      const phone = normalizePhoneBR(rawPhone);
+      if(phone) window.location.href = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+    }
+  });
+
+  // ----- copiar link coleta -----
+  const btnCopyCol = document.getElementById('btnCopyColeta');
+  const $coleta    = document.getElementById('coletaLink');
+  btnCopyCol && btnCopyCol.addEventListener('click', async ()=>{
+    try{ await navigator.clipboard.writeText($coleta.value); }
+    catch(e){ $coleta.select(); document.execCommand('copy'); }
+    btnCopyCol.innerText='Copiado!'; setTimeout(()=> btnCopyCol.innerText='Copiar', 1400);
+  });
+
+  // WhatsApp + Share (coleta)
+  const btnWACol   = document.getElementById('btnWACol');
+  const btnShareCol= document.getElementById('btnShareCol');
+  function buildMsgColeta(){
+    return `Olá ${clienteNome}! 👋
+
+Para prosseguirmos com sua encomenda #${pedidoId}, precisamos que informe os TAMANHOS (e, se necessário, nomes/números).
+
+Acesse o link abaixo e preencha:
+${$coleta ? $coleta.value : location.href}
+
+Obrigado!`;
+  }
+  btnWACol && btnWACol.addEventListener('click', ()=>{
+    const phone = normalizePhoneBR(rawPhone);
+    if(!phone){ alert('Telefone do cliente não cadastrado.'); return; }
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(buildMsgColeta())}`;
+    window.location.href = url;
+  });
+  btnShareCol && btnShareCol.addEventListener('click', async ()=>{
+    const text = buildMsgColeta();
+    const url  = $coleta ? $coleta.value : location.href;
+    if(navigator.share){
+      try{ await navigator.share({ title:`Coleta de tamanhos • Pedido #${pedidoId}`, text, url }); }catch(e){}
+    }else{
+      try{ await navigator.clipboard.writeText(text); }catch(e){}
+      const phone = normalizePhoneBR(rawPhone);
+      if(phone) window.location.href = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+    }
+  });
+})();
+
+// ===== Impressão somente da coleta =====
+function printColeta(){
+  const area = document.getElementById('coletaPrintArea');
+  if(!area){ alert('Nada para imprimir.'); return; }
+
+  const meta = area.dataset; // empresa, pedido, cliente, modo, recebido
+
+  const w = window.open('', '_blank');
+  const html = `
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Coleta de tamanhos — Pedido #${meta.pedido || ''}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <style>
+    body{ font:12px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans',sans-serif; color:#0f172a; padding:16px; }
+    .mini{ color:#64748b; font-size:.9rem; }
+    .brand{ font-weight:700; }
+    .table{ font-size:.9rem; }
+    hr{ margin:10px 0; }
+    @media print{ img, table { page-break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <div class="d-flex justify-content-between align-items-start mb-2">
+    <div>
+      <div class="brand">${meta.empresa || ''}</div>
+      <div class="mini">Pedido #${meta.pedido || ''} • Cliente: ${meta.cliente || ''}</div>
+      <div class="mini">Modo: ${meta.modo || '—'} • Recebido: ${meta.recebido || '—'}</div>
+    </div>
+  </div>
+
+  ${area.innerHTML}
+
+  <hr>
+  <div class="mini">Impresso em: ${(new Date()).toLocaleString('pt-BR')}</div>
+
+  <script>
+    window.addEventListener('load', function(){ window.print(); setTimeout(function(){ window.close(); }, 200); });
+  <\/script>
+</body>
+</html>`;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+</script>
+</body>
+</html>

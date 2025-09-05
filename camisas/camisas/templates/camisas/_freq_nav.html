@@ -1,0 +1,20 @@
+{# Navegação do módulo Frequência (estilo Home) — versão segura #}
+<div class="card-clean p-2 mb-3">
+  {% now "Y-m" as NOW_YM %}
+  {# fid: usa nav_fid > nav_func.id > vazio. messtr: usa nav_mes_str > mês atual #}
+  {% with fid=nav_fid|default:nav_func.id|default:'' messtr=nav_mes_str|default:NOW_YM %}
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'camisas:home' %}">🏠 Início</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'camisas:freq_resumo' %}?func={{ fid }}&mes={{ messtr }}">📅 Resumo</a>
+    <a class="btn btn-outline-primary btn-sm"  href="{% url 'camisas:freq_novo' %}?func={{ fid }}&data={% now 'Y-m-d' %}">➕ Novo lançamento</a>
+    <a class="btn btn-dark btn-sm"              href="{% url 'camisas:freq_hoje' %}?func={{ fid }}">⏰ Lançar HOJE</a>
+    <a class="btn btn-outline-dark btn-sm"      href="{% url 'camisas:freq_funcionarios' %}">👥 Funcionários</a>
+    <a class="btn btn-success btn-sm"           href="{% url 'camisas:freq_relatorio_csv' %}?func={{ fid }}&mes={{ messtr }}">⬇️ CSV</a>
+    <a class="btn btn-outline-dark btn-sm"
+   href="{% url 'camisas:freq_folha' %}?func={{ nav_fid|default:nav_func.id }}&mes={{ nav_mes_str }}">
+  🖨️ Folha p/ assinatura
+</a>
+
+  </div>
+  {% endwith %}
+</div>
