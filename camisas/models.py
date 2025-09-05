@@ -18,6 +18,26 @@ from django.db.models.fields.files import FieldFile
 from django.utils.safestring import mark_safe
 from django.utils import timezone
 
+# --- Storage dinâmico: Cloudinary em produção, local em dev ---
+import os
+try:
+    from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
+    _CLOUDINARY_URL = os.getenv("CLOUDINARY_URL", "")
+    USE_CLOUDINARY = bool(_CLOUDINARY_URL)
+except Exception:
+    USE_CLOUDINARY = False
+    MediaCloudinaryStorage = None
+    RawMediaCloudinaryStorage = None
+
+if USE_CLOUDINARY:
+    IMAGE_STORAGE = MediaCloudinaryStorage()     # imagens (png, jpg, etc.)
+    FILE_STORAGE  = RawMediaCloudinaryStorage()  # arquivos “raw” (pdf, txt, etc.)
+else:
+    # fallback local (dev)
+    from django.core.files.storage import FileSystemStorage
+    IMAGE_STORAGE = FileSystemStorage()
+    FILE_STORAGE  = FileSystemStorage()
+
 # =========================
 # Helpers de upload / número
 # =========================
@@ -93,7 +113,7 @@ class Empresa(models.Model):
     endereco = models.CharField(max_length=180, blank=True, null=True)
     cidade = models.CharField(max_length=80, blank=True, null=True)
     uf = models.CharField(max_length=2, blank=True, null=True)
-    logo = models.ImageField(upload_to=logo_upload_to, blank=True, null=True)
+    logo = models.ImageField(upload_to=logo_upload_to, blank=True, null=True, storage=IMAGE_STORAGE)
 
     class Meta:
         ordering = ("nome_fantasia",)
@@ -405,7 +425,8 @@ class Pedido(models.Model):
     numero_orcamento = models.CharField(max_length=40, blank=True, null=True)
     validade = models.DateField(blank=True, null=True)
     condicoes = models.TextField(blank=True, null=True)
-    arte = SafeImageField(upload_to=arte_upload_to, blank=True, null=True)
+    arte = SafeImageField(upload_to=arte_upload_to, blank=True, null=True, storage=IMAGE_STORAGE)
+
 
     # aprovação pública (ORÇAMENTO)
     APPROVAL_CHOICES = (("PEND", "Pendente"), ("APRV", "Aprovado"), ("REJ", "Recusado"))
@@ -1041,7 +1062,8 @@ class Despesa(models.Model):
 
     observacao = models.TextField(blank=True, null=True)
     # anexo (nota/recibo). Usamos FileField normal + helpers "safe"
-    anexo = models.FileField(upload_to="despesas/%Y/%m", blank=True, null=True)
+    anexo = models.FileField(upload_to="despesas/%Y/%m", blank=True, null=True, storage=FILE_STORAGE)
+
 
     criado_em = models.DateTimeField(auto_now_add=True)
 
