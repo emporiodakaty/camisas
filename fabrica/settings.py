@@ -1,7 +1,12 @@
 # fabrica/settings.py
 from pathlib import Path
 import os
-import dj_database_url  # <- garantir no requirements.txt
+import dj_database_url  # requirements: dj-database-url
+# Cloudinary storage para MEDIA
+# requirements: cloudinary, django-cloudinary-storage
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 
 # -------------------------------------------------
 # Base
@@ -14,17 +19,25 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "mude-esta-chave-em-producao")
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in ("1", "true", "yes")
 
-# Hosts permitidos
+# -------------------------------------------------
+# Hosts / CSRF (com fallback para Render)
+# -------------------------------------------------
 if DEBUG:
     ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
 else:
-    # Ex.: "app.onrender.com,www.seudominio.com"
-    _hosts = os.getenv("DJANGO_ALLOWED_HOSTS", "")
-    ALLOWED_HOSTS = [h.strip() for h in _hosts.split(",") if h.strip()]
+    # 1) tenta DJANGO_ALLOWED_HOSTS; 2) cai para RENDER_EXTERNAL_HOSTNAME
+    host_source = os.getenv("DJANGO_ALLOWED_HOSTS") or os.getenv("RENDER_EXTERNAL_HOSTNAME", "")
+    ALLOWED_HOSTS = [h.strip() for h in host_source.split(",") if h.strip()]
+    # 3) garante o domínio do serviço (ajuste aqui se mudar o subdomínio)
+    forced = "camisas-js8k.onrender.com"
+    if forced not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(forced)
 
-# Domínios confiáveis para CSRF (produção)
-# Ex.: "https://app.onrender.com,https://www.seudominio.com"
+# CSRF TRUSTED ORIGINS com fallback
 _csrf = os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "")
+if not _csrf:
+    base_host = os.getenv("RENDER_EXTERNAL_HOSTNAME") or "camisas-js8k.onrender.com"
+    _csrf = f"https://{base_host}"
 CSRF_TRUSTED_ORIGINS = [u.strip() for u in _csrf.split(",") if u.strip()]
 
 # -------------------------------------------------
@@ -39,11 +52,13 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 
-    # Apps do projeto
-    "camisas",
-
     # Terceiros
     "widget_tweaks",
+    "cloudinary",
+    "cloudinary_storage",
+
+    # Apps do projeto
+    "camisas",
 ]
 
 # -------------------------------------------------
@@ -52,7 +67,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
 
-    # Whitenoise deve ficar logo após SecurityMiddleware
+    # Whitenoise (estáticos) — mantenha logo após SecurityMiddleware
     "whitenoise.middleware.WhiteNoiseMiddleware",
 
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -92,23 +107,18 @@ TEMPLATES = [
 ]
 
 # -------------------------------------------------
-# Banco de Dados
+# Banco de Dados (Neon via DATABASE_URL)
 # -------------------------------------------------
-# Padrão: SQLite em dev. Em produção, usar DATABASE_URL (Neon).
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
     }
 }
-
 _db_url = os.getenv("DATABASE_URL")
 if _db_url:
-    # Neon exige sslmode=require; conn_max_age ajuda no pooling
     DATABASES["default"] = dj_database_url.parse(
-        _db_url,
-        conn_max_age=600,
-        ssl_require=True,
+        _db_url, conn_max_age=600, ssl_require=True
     )
 
 # -------------------------------------------------
@@ -134,23 +144,27 @@ USE_I18N = True
 USE_TZ = True
 
 # -------------------------------------------------
-# Arquivos estáticos e de mídia
+# Estáticos (Whitenoise) e Mídia (Cloudinary)
 # -------------------------------------------------
+# Static (build-time)
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-
-# Usa a pasta "static" apenas se existir (evita W004)
 _static_dir = BASE_DIR / "static"
-if _static_dir.exists():
-    STATICFILES_DIRS = [_static_dir]
-else:
-    STATICFILES_DIRS = []
-
-# Whitenoise: servir estáticos em produção
+STATICFILES_DIRS = [_static_dir] if _static_dir.exists() else []
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
-MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+# Media (runtime) -> Cloudinary
+# defina CLOUDINARY_URL nas env vars (ex.: cloudinary://API_KEY:API_SECRET@CLOUD_NAME)
+CLOUDINARY_URL = os.getenv("CLOUDINARY_URL")  # NÃO coloque valor aqui no código!
+if not CLOUDINARY_URL and not DEBUG:
+    # evita subir sem CLOUDINARY_URL em produção
+    raise RuntimeError("CLOUDINARY_URL não configurada nas variáveis de ambiente.")
+
+cloudinary.config(cloudinary_url=CLOUDINARY_URL)
+
+DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+MEDIA_URL = "/media/"  # Django ainda usa essa URL base em templates; Cloudinary cuida das entregas
+MEDIA_ROOT = BASE_DIR / "media"  # não será usado para upload quando Cloudinary estiver ativo
 
 # -------------------------------------------------
 # Padrões
@@ -168,13 +182,13 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
-    # HSTS (opcional; ative após validar HTTPS)
+    # HSTS (ative após validar HTTPS por completo)
     # SECURE_HSTS_SECONDS = 31536000
     # SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     # SECURE_HSTS_PRELOAD = True
 
 # -------------------------------------------------
-# Logging básico (útil na Render)
+# Logging (Render mostra no painel de Logs)
 # -------------------------------------------------
 LOGGING = {
     "version": 1,
@@ -182,3 +196,7 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "INFO"},
 }
+if not DEBUG:
+    import logging
+    logging.getLogger(__name__).info("ALLOWED_HOSTS=%s", ALLOWED_HOSTS)
+    logging.getLogger(__name__).info("CSRF_TRUSTED_ORIGINS=%s", CSRF_TRUSTED_ORIGINS)
