@@ -1,7 +1,7 @@
 # fabrica/settings.py
 from pathlib import Path
 import os
-import dj_database_url  # <- adicionar no requirements.txt
+import dj_database_url  # <- garantir no requirements.txt
 
 # -------------------------------------------------
 # Base
@@ -108,7 +108,7 @@ if _db_url:
     DATABASES["default"] = dj_database_url.parse(
         _db_url,
         conn_max_age=600,
-        ssl_require=True
+        ssl_require=True,
     )
 
 # -------------------------------------------------
@@ -138,8 +138,13 @@ USE_TZ = True
 # -------------------------------------------------
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-# Opcional durante o desenvolvimento; remova se não usar a pasta
-STATICFILES_DIRS = [BASE_DIR / "static"]
+
+# Usa a pasta "static" apenas se existir (evita W004)
+_static_dir = BASE_DIR / "static"
+if _static_dir.exists():
+    STATICFILES_DIRS = [_static_dir]
+else:
+    STATICFILES_DIRS = []
 
 # Whitenoise: servir estáticos em produção
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
@@ -163,7 +168,7 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
-    # HSTS (opcional; ative após validar HTTPS OK)
+    # HSTS (opcional; ative após validar HTTPS)
     # SECURE_HSTS_SECONDS = 31536000
     # SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     # SECURE_HSTS_PRELOAD = True
