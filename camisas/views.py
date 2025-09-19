@@ -49,7 +49,7 @@ from .models import (
     # Terceirização
     Costureira, Remessa, RemessaItem, PagamentoCostureira,
     # Despesas
-    Despesa, ParcelaDespesa, CategoriaDespesa, Fornecedor,
+    Despesa, ParcelaDespesa, CategoriaDespesa, Fornecedor, Pagamento,
     # Auxiliares
     SIZE_ORDER,
 )
@@ -1561,20 +1561,40 @@ def pedidos_home(request):
     ini, fim = _periodo(request)
     empresa_id = request.GET.get("empresa") or None
 
-    ped_qs = Pedido.objects.select_related("cliente","empresa").filter(criado_em__date__gte=ini, criado_em__date__lte=fim)
-    if empresa_id: ped_qs = ped_qs.filter(empresa_id=empresa_id)
+    ped_qs = Pedido.objects.select_related("cliente", "empresa").filter(
+        criado_em__date__gte=ini,
+        criado_em__date__lte=fim
+    )
+    if empresa_id:
+        ped_qs = ped_qs.filter(empresa_id=empresa_id)
 
-    # receita bruta (itens) no período
-    receita = ped_qs.aggregate(
+    # Receita bruta (valor total dos itens, sem considerar pagamentos)
+    receita_bruta = ped_qs.aggregate(
         s=Sum(
             F("itens__preco_unitario") * F("itens__quantidade"),
             output_field=DecimalField(max_digits=14, decimal_places=2),
         )
     )["s"] or Decimal("0")
 
+    # Receita líquida (valor efetivamente recebido em pagamentos no período)
+    receita_liquida = (
+        Pagamento.objects.filter(
+            pedido__in=ped_qs,
+            data__date__gte=ini,
+            data__date__lte=fim,
+        ).aggregate(
+            s=Sum("valor", output_field=DecimalField(max_digits=14, decimal_places=2))
+        )["s"] or Decimal("0")
+    )
+
+    # Saldo pendente = bruta - líquida
+    saldo_pendente = receita_bruta - receita_liquida
+
     kpis = {
         "periodo": f"{ini.strftime('%d/%m/%Y')} – {fim.strftime('%d/%m/%Y')}",
-        "receita": receita,
+        "receita_bruta": receita_bruta,
+        "receita_liquida": receita_liquida,
+        "saldo_pendente": saldo_pendente,
         "qtd": ped_qs.count(),
         "orc": ped_qs.filter(status="ORC").count(),
         "pen": ped_qs.filter(status="PEN").count(),
@@ -1582,25 +1602,33 @@ def pedidos_home(request):
         "fat": ped_qs.filter(status="FAT").count(),
     }
 
-    # top produtos por receita (bruta)
+    # Top produtos por receita bruta
     top_prod = (
         ItemPedido.objects
         .filter(pedido__in=ped_qs)
         .values("variacao__produto__nome")
-        .annotate(total=Sum(F("preco_unitario")*F("quantidade"), output_field=DecimalField(max_digits=14, decimal_places=2)))
+        .annotate(
+            total=Sum(
+                F("preco_unitario") * F("quantidade"),
+                output_field=DecimalField(max_digits=14, decimal_places=2)
+            )
+        )
         .order_by("-total")[:8]
     )
 
-    recent = ped_qs.order_by("-criado_em").values("id","cliente__nome","status","criado_em")[:12]
+    # Últimos pedidos
+    recent = ped_qs.order_by("-criado_em").values("id", "cliente__nome", "status", "criado_em")[:12]
 
     context = {
         "empresas": Empresa.objects.all(),
         "kpis": kpis,
         "top_prod": top_prod,
         "recent": recent,
-        "ini": ini, "fim": fim,
+        "ini": ini,
+        "fim": fim,
     }
     return render(request, "camisas/mod_pedidos_home.html", context)
+
 
 @login_required
 def despesas_home(request):
@@ -3150,4 +3178,55 @@ def pessoa_coleta_add(request, coleta_id):
         "form": form,
         "coleta": coleta,
         "pedido": coleta.pedido,
+    })
+
+
+@login_required
+def pedido_registrar_pagamento(request, pk):
+    pedido = get_object_or_404(Pedido, pk=pk)
+
+    # total com descontos/acréscimos
+    total = pedido.total_com_descontos()
+
+    # já pago
+    pago = pedido.pagamentos.aggregate(total=Sum("valor"))["total"] or Decimal("0.00")
+    saldo_pendente = total - pago
+
+    valor_sugerido = saldo_pendente if saldo_pendente > 0 else Decimal("0.00")
+
+    if request.method == "POST":
+        try:
+            valor = Decimal(request.POST.get("valor") or "0")
+        except Exception:
+            valor = Decimal("0.00")
+
+        forma = (request.POST.get("forma") or "").strip()
+        descricao = (request.POST.get("descricao") or "").strip()  # sinal, saldo, entrada...
+        
+        if valor <= 0:
+            messages.error(request, "Informe um valor maior que zero.")
+        elif valor > saldo_pendente:
+            messages.error(
+                request,
+                f"O valor não pode ser maior que o saldo pendente (R$ {saldo_pendente:.2f})."
+            )
+        elif not forma:
+            messages.error(request, "Selecione a forma de pagamento.")
+        else:
+            Pagamento.objects.create(
+                pedido=pedido,
+                valor=valor,
+                forma=forma,
+                descricao=descricao or None,
+                usuario=request.user
+            )
+            messages.success(request, f"Pagamento de R$ {valor:.2f} registrado com sucesso.")
+            return redirect("camisas:pedido_detail", pk=pedido.pk)
+
+    return render(request, "camisas/pedido_registrar_pagamento.html", {
+        "pedido": pedido,
+        "total": total,
+        "saldo_pendente": saldo_pendente,
+        "valor_sugerido": valor_sugerido,
+        "formas": Pagamento.FORMA_CHOICES,  # passa para o template
     })

@@ -428,7 +428,6 @@ class Pedido(models.Model):
     approval_email = models.EmailField(blank=True, null=True)
     approval_comment = models.TextField(blank=True, null=True)
 
-    # assinatura eletrônica (ORÇAMENTO)
     approval_signature = SafeImageField(upload_to="assinaturas/%Y/%m", blank=True, null=True)
     approval_user_agent = models.TextField(blank=True, default="")
     approval_timezone = models.CharField(max_length=64, blank=True, default="")
@@ -451,7 +450,6 @@ class Pedido(models.Model):
 
     # ---------- totais ----------
     def total_bruto(self) -> Decimal:
-        # espera related_name="itens" no ItemPedido
         return sum((i.preco_unitario * i.quantidade) for i in self.itens.all()) or Decimal("0.00")
 
     def total_com_descontos(self) -> Decimal:
@@ -462,137 +460,43 @@ class Pedido(models.Model):
             total *= (Decimal("1") - self.desconto_percentual / Decimal("100"))
         return total.quantize(Decimal("0.01"))
 
-    # ---------- helpers (ORÇAMENTO) ----------
-    def _generate_unique_token(self) -> str:
-        token = gen_approval_token()
-        while type(self).objects.filter(approval_token=token).exists():
-            token = gen_approval_token()
-        return token
+    # ---------- PAGAMENTOS ----------
+    @property
+    def total_pago(self) -> Decimal:
+        return sum((p.valor for p in self.pagamentos.all()), Decimal("0.00"))
 
-    def reset_approval(self, *, regenerate_token: bool = False, save: bool = True):
-        if regenerate_token:
-            self.approval_token = self._generate_unique_token()
+    @property
+    def saldo_restante(self) -> Decimal:
+        return self.total_com_descontos() - self.total_pago
 
-        self.approval_status = "PEND"
-        self.approval_decided_at = None
-        self.approval_decision_ip = None
-        self.approval_name = None
-        self.approval_email = None
-        self.approval_comment = None
+    def registrar_sinal(self, usuario=None):
+        """Registra automaticamente 50% de entrada e muda status para PRODUÇÃO"""
+        if self.total_pago > 0:
+            return  # evita duplicar
 
-        self.approval_user_agent = ""
-        self.approval_timezone = ""
-        self.approval_hash = ""
-        try:
-            if self.approval_signature and getattr(self.approval_signature, "name", ""):
-                self.approval_signature.delete(save=False)
-        finally:
-            self.approval_signature = None
+        sinal = (self.total_com_descontos() * Decimal("0.5")).quantize(Decimal("0.01"))
+        Pagamento.objects.create(
+            pedido=self,
+            valor=sinal,
+            descricao="Sinal (50%)",
+            usuario=usuario,
+        )
+        self.status = "PROD"
+        self.save(update_fields=["status"])
 
-        self.status = "ORC"
-
-        if save:
-            self.save(update_fields=[
-                "approval_token", "approval_status", "approval_decided_at", "approval_decision_ip",
-                "approval_name", "approval_email", "approval_comment", "approval_user_agent",
-                "approval_timezone", "approval_hash", "approval_signature", "status"
-            ])
-
-    def approve_with_signature(
-        self, *, name: str, email: str | None, comment: str | None,
-        ip: str | None, ua: str = "", tz: str = "",
-        image_bin: bytes, set_status: bool = True, save: bool = True
-    ):
-        name = name or ""
-        stamp = timezone.now().isoformat()
-        digest = hashlib.sha256((name + (email or "") + (ip or "") + stamp).encode("utf-8") + image_bin).hexdigest()
-        fname = f"pedido_{self.pk or 'new'}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.png"
-
-        self.approval_signature.save(fname, ContentFile(image_bin), save=False)
-        self.approval_name = name
-        self.approval_email = email
-        self.approval_comment = comment
-        self.approval_decision_ip = ip
-        self.approval_user_agent = ua or ""
-        self.approval_timezone = tz or ""
-        self.approval_hash = digest
-        self.approval_decided_at = timezone.now()
-
-        if set_status:
-            self.approval_status = "APRV"
-            if self.status == "ORC":
-                self.status = "PEN"
-
-        if save:
-            self.save(update_fields=[
-                "approval_signature", "approval_name", "approval_email", "approval_comment",
-                "approval_decision_ip", "approval_user_agent", "approval_timezone",
-                "approval_hash", "approval_decided_at", "approval_status", "status"
-            ])
-
-    # ---------- helpers (ARTE) ----------
-    def get_public_artwork_path(self) -> str:
-        from django.urls import reverse
-        return reverse("camisas:arte_publica", args=[self.artwork_token])
-
-    def reset_artwork_approval(self, *, regenerate_token: bool = False, save: bool = True):
-        if regenerate_token:
-            new = gen_approval_token()
-            while type(self).objects.filter(artwork_token=new).exists():
-                new = gen_approval_token()
-            self.artwork_token = new
-
-        self.artwork_status = "PEND"
-        self.artwork_decided_at = None
-        self.artwork_decision_ip = None
-        self.artwork_name = None
-        self.artwork_email = None
-        self.artwork_comment = None
-
-        self.artwork_user_agent = ""
-        self.artwork_timezone = ""
-        self.artwork_hash = ""
-        try:
-            if self.artwork_signature and getattr(self.artwork_signature, "name", ""):
-                self.artwork_signature.delete(save=False)
-        finally:
-            self.artwork_signature = None
-
-        if save:
-            self.save(update_fields=[
-                "artwork_token","artwork_status","artwork_decided_at","artwork_decision_ip",
-                "artwork_name","artwork_email","artwork_comment","artwork_user_agent",
-                "artwork_timezone","artwork_hash","artwork_signature"
-            ])
-
-    def approve_art_with_signature(
-        self, *, name: str, email: str | None, comment: str | None,
-        ip: str | None, ua: str = "", tz: str = "", image_bin: bytes,
-        set_status: bool = True, save: bool = True
-    ):
-        name = name or ""
-        stamp = timezone.now().isoformat()
-        digest = hashlib.sha256((name + (email or "") + (ip or "") + stamp).encode("utf-8") + image_bin).hexdigest()
-        fname = f"arte_{self.pk or 'new'}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.png"
-
-        self.artwork_signature.save(fname, ContentFile(image_bin), save=False)
-        self.artwork_name = name
-        self.artwork_email = email
-        self.artwork_comment = comment
-        self.artwork_decision_ip = ip
-        self.artwork_user_agent = ua or ""
-        self.artwork_timezone = tz or ""
-        self.artwork_hash = digest
-        self.artwork_decided_at = timezone.now()
-        if set_status:
-            self.artwork_status = "APRV"
-
-        if save:
-            self.save(update_fields=[
-                "artwork_signature","artwork_name","artwork_email","artwork_comment",
-                "artwork_decision_ip","artwork_user_agent","artwork_timezone",
-                "artwork_hash","artwork_decided_at","artwork_status"
-            ])
+    def registrar_saldo_final(self, usuario=None):
+        """Registra o saldo restante e conclui o pedido (FAT)."""
+        saldo = self.saldo_restante
+        if saldo <= 0:
+            return
+        Pagamento.objects.create(
+            pedido=self,
+            valor=saldo,
+            descricao="Saldo final",
+            usuario=usuario,
+        )
+        self.status = "FAT"
+        self.save(update_fields=["status"])
 
     # ---------- utilidades ----------
     def save(self, *args, **kwargs):
@@ -613,18 +517,16 @@ class Pedido(models.Model):
                     attempts += 1
                     if attempts >= 5:
                         raise
-                    # regenera ambos por segurança
                     self.approval_token = gen_approval_token()
                     self.artwork_token = gen_approval_token()
         else:
-            # garante token de arte em registros antigos
             update_fields = kwargs.get("update_fields", None)
             changed = False
             if not self.artwork_token:
                 self.artwork_token = gen_approval_token()
                 changed = True
             if changed and update_fields is not None:
-                kwargs["update_fields"] = None  # força salvar tudo
+                kwargs["update_fields"] = None
             super().save(*args, **kwargs)
 
     def __str__(self) -> str:
@@ -666,10 +568,10 @@ class Pedido(models.Model):
         f = getattr(self, "artwork_signature", None)
         return f.url if (f and getattr(f, "name", None)) else ""
 
-    # atalho semântico (opcional, útil no template)
     @property
     def should_hide_total(self) -> bool:
         return bool(self.orcamento_ocultar_total)
+
 
 class ItemPedido(models.Model):
     pedido = models.ForeignKey("Pedido", on_delete=models.CASCADE, related_name="itens")
@@ -1491,3 +1393,46 @@ class PessoaColeta(models.Model):
 
     def __str__(self):
         return f"{self.nome} ({self.tamanho}) - {self.get_status_pagamento_display()}"
+
+from django.db import models
+from django.conf import settings
+
+class Pagamento(models.Model):
+    FORMA_CHOICES = (
+        ("PIX", "Pix"),
+        ("CRED", "Cartão de Crédito"),
+        ("DEB", "Cartão de Débito"),
+        ("DIN", "Dinheiro"),
+    )
+
+    pedido = models.ForeignKey(
+        "Pedido", 
+        on_delete=models.CASCADE, 
+        related_name="pagamentos"
+    )
+    valor = models.DecimalField(max_digits=10, decimal_places=2)
+    data = models.DateTimeField(auto_now_add=True)
+    descricao = models.CharField(
+        max_length=120, 
+        blank=True, 
+        null=True,
+        help_text="Ex: Sinal, Saldo final, Entrada"
+    )
+    forma = models.CharField(
+        max_length=10, 
+        choices=FORMA_CHOICES, 
+        default="PIX"
+    )
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True
+    )
+
+    class Meta:
+        ordering = ["data"]
+
+    def __str__(self):
+        return f"{self.get_forma_display()} {self.valor} em {self.data:%d/%m/%Y}"
+

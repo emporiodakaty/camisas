@@ -63,10 +63,13 @@
       <a class="btn btn-sm btn-outline-dark" href="{% url 'camisas:pedido_cotacao_precos' pedido.pk %}" target="_blank" rel="noopener">Cotação de Preços</a>
       <a class="btn btn-sm btn-outline-dark" href="{% url 'camisas:pedido_gerar_remessa' pedido.pk %}" title="Gerar remessa da costureira a partir deste pedido">Gerar remessa</a>
       <a class="btn btn-sm btn-dark" href="{% url 'camisas:pedido_enviar_arte' pedido.pk %}">Enviar Arte</a>
-      <a class="btn btn-sm btn-outline-primary" href="{% url 'camisas:coleta_criar' pedido.pk %}">Coleta de Tamanhos</a>
       {% if pedido.status != 'FAT' %}
         <a class="btn btn-sm btn-primary" href="{% url 'camisas:pedido_faturar' pedido.pk %}">Faturar</a>
       {% endif %}
+      <a class="btn btn-sm btn-success" href="{% url 'camisas:pedido_registrar_pagamento' pedido.pk %}">
+      Registrar Pagamento
+      </a>
+
     </div>
   </div>
 

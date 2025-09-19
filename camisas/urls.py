@@ -102,7 +102,7 @@ urlpatterns = [
 
 
     path("itens/<int:item_id>/tamanhos/editar/",views.item_tamanhos_editar,name="item_tamanhos_editar"),
-
+    path("pedidos/<int:pk>/registrar-pagamento/", views.pedido_registrar_pagamento, name="pedido_registrar_pagamento"),
     # Remessas rápidas
     path("pedidos/<int:pk>/gerar-remessa/", views.pedido_gerar_remessa, name="pedido_gerar_remessa"),
     path("remessas/quick-create-by-produto/", views.remessa_quick_create_by_produto, name="remessa_quick_create_by_produto"),
