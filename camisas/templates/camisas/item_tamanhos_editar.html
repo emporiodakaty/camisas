@@ -1,0 +1,215 @@
+{% load widget_tweaks %}
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <title>Editar tamanhos • Item #{{ item.id }} • Pedido #{{ pedido.pk }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+
+  <style>
+    :root{--ink:#0f172a;--muted:#64748b;--g1:#f30c80;--g2:#f30c80;--ring:rgba(37,99,235,.18);--base-font:14px;}
+    html{font-size:var(--base-font);} body{background:#f6f8fb;color:var(--ink);}
+    .nav-pro{background:linear-gradient(90deg,var(--g1),var(--g2));}
+    .card{border:none;box-shadow:0 10px 24px rgba(17,24,39,.08);border-radius:.9rem;}
+    .table thead th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#64748b;border-top:0}
+    .mini{font-size:.85rem;color:var(--muted)}
+    .form-control:focus,.form-select:focus{box-shadow:0 0 0 .25rem var(--ring);border-color:#93c5fd}
+    .btn-sm{font-size:.82rem}
+    .badge-soft{background:#eef2f7;color:#334155}
+    .err{color:#dc2626;font-size:.8rem}
+  </style>
+</head>
+<body>
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{% url 'camisas:pedido_list' %}">Pedidos</a>
+    <div class="ms-auto d-flex gap-2">
+      <a class="btn btn-sm btn-light" href="{% url 'camisas:pedido_detail' pedido.pk %}">Voltar ao pedido</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  {% for message in messages %}
+    <div class="alert alert-{{ message.tags }} shadow-sm">{{ message }}</div>
+  {% endfor %}
+
+  <!-- Cabeçalho do editor -->
+  <div class="card p-3 bg-white mb-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h1 class="h5 mb-1">Editar tamanhos • Item #{{ item.id }}</h1>
+        <div class="mini">
+          Pedido #{{ pedido.pk }} • Produto: <strong>{{ item.variacao.produto.nome }}</strong>
+          {% if item.variacao.tipo %} • Variação: {{ item.variacao.tipo }}{% endif %}
+          • Qtd do item: {{ item.quantidade }}
+        </div>
+      </div>
+      <span class="badge badge-soft align-self-center">Cliente: {{ pedido.cliente.nome }}</span>
+    </div>
+  </div>
+
+  <!-- Formulário -->
+  <form method="post" class="card p-3 bg-white" id="formTamanhos">
+    {% csrf_token %}
+    {{ formset.management_form }}
+
+    {% if formset.non_form_errors %}
+      <div class="alert alert-danger">
+        {{ formset.non_form_errors }}
+      </div>
+    {% endif %}
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h2 class="h6 m-0">Personalizações (tamanhos por nome/número)</h2>
+      <button class="btn btn-sm btn-outline-primary" type="button" id="btnAddRow">+ Adicionar linha</button>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table align-middle" id="tblPers">
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Número</th>
+            <th>Outra info</th>
+            <th>Tam. Camisa</th>
+            <th>Qtd</th>
+            <th class="text-center">Short?</th>
+            <th>Tam. Short</th>
+            <th class="text-end">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="bodyPers">
+          {% for f in formset.forms %}
+          <tr class="p-row">
+            <td>
+              {{ f.id }} {# hidden pk #}
+              {{ f.nome|add_class:"form-control form-control-sm" }}
+              {% if f.nome.errors %}<div class="err">{{ f.nome.errors|join:", " }}</div>{% endif %}
+            </td>
+            <td>
+              {{ f.numero|add_class:"form-control form-control-sm" }}
+              {% if f.numero.errors %}<div class="err">{{ f.numero.errors|join:", " }}</div>{% endif %}
+            </td>
+            <td>
+              {{ f.outra_info|add_class:"form-control form-control-sm" }}
+              {% if f.outra_info.errors %}<div class="err">{{ f.outra_info.errors|join:", " }}</div>{% endif %}
+            </td>
+            <td>
+              {{ f.tamanho_camisa|add_class:"form-select form-select-sm" }}
+              {% if f.tamanho_camisa.errors %}<div class="err">{{ f.tamanho_camisa.errors|join:", " }}</div>{% endif %}
+            </td>
+            <td style="max-width:90px">
+              {{ f.quantidade|add_class:"form-control form-control-sm"|attr:"min=1"|attr:"step=1" }}
+              {% if f.quantidade.errors %}<div class="err">{{ f.quantidade.errors|join:", " }}</div>{% endif %}
+            </td>
+            <td class="text-center">
+              {{ f.incluir_short }}
+              {% if f.incluir_short.errors %}<div class="err">{{ f.incluir_short.errors|join:", " }}</div>{% endif %}
+            </td>
+            <td>
+              {{ f.tamanho_short|add_class:"form-select form-select-sm" }}
+              {% if f.tamanho_short.errors %}<div class="err">{{ f.tamanho_short.errors|join:", " }}</div>{% endif %}
+            </td>
+            <td class="text-end">
+              {% if formset.can_delete %}
+                {{ f.DELETE|add_class:"d-none del-flag" }}
+              {% endif %}
+              <button type="button" class="btn btn-sm btn-outline-danger btn-remove">Remover</button>
+            </td>
+          </tr>
+
+          {% if f.non_field_errors %}
+          <tr><td colspan="8"><div class="err">{{ f.non_field_errors|join:", " }}</div></td></tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# Template (empty_form) para adicionar linhas dinamicamente #}
+    <template id="tplRow">
+      <tr class="p-row">
+        <td>
+          {{ formset.empty_form.id }}
+          {{ formset.empty_form.nome|add_class:"form-control form-control-sm" }}
+        </td>
+        <td>{{ formset.empty_form.numero|add_class:"form-control form-control-sm" }}</td>
+        <td>{{ formset.empty_form.outra_info|add_class:"form-control form-control-sm" }}</td>
+        <td>{{ formset.empty_form.tamanho_camisa|add_class:"form-select form-select-sm" }}</td>
+        <td style="max-width:90px">
+          {{ formset.empty_form.quantidade|add_class:"form-control form-control-sm"|attr:"min=1"|attr:"step=1"|attr:"value=1" }}
+        </td>
+        <td class="text-center">{{ formset.empty_form.incluir_short }}</td>
+        <td>{{ formset.empty_form.tamanho_short|add_class:"form-select form-select-sm" }}</td>
+        <td class="text-end">
+          {% if formset.can_delete %}
+            {{ formset.empty_form.DELETE|add_class:"d-none del-flag" }}
+          {% endif %}
+          <button type="button" class="btn btn-sm btn-outline-danger btn-remove">Remover</button>
+        </td>
+      </tr>
+    </template>
+
+    <div class="d-flex gap-2 mt-3">
+      <button class="btn btn-primary">Salvar tamanhos</button>
+      <a class="btn btn-outline-secondary" href="{% url 'camisas:pedido_detail' pedido.pk %}">Cancelar</a>
+    </div>
+  </form>
+</main>
+
+<script>
+(function(){
+  const prefix = "{{ formset.prefix }}"; // "personalizacoes"
+  const totalInput = document.querySelector(`input[name="${prefix}-TOTAL_FORMS"]`);
+  const tbody = document.getElementById('bodyPers');
+  const btnAdd = document.getElementById('btnAddRow');
+  const tpl = document.getElementById('tplRow');
+
+  // Remove = marca DELETE quando disponível; se não houver, remove a linha do DOM
+  function attachRowEvents(tr){
+    const btnRm = tr.querySelector('.btn-remove');
+    btnRm && btnRm.addEventListener('click', ()=>{
+      const del = tr.querySelector('.del-flag');
+      if(del){ del.checked = true; tr.style.display = 'none'; }
+      else { tr.remove(); adjustIndexes(); }
+    });
+  }
+
+  // Atribui listeners às linhas já renderizadas
+  tbody.querySelectorAll('tr.p-row').forEach(attachRowEvents);
+
+  // Adicionar nova linha a partir do empty_form
+  btnAdd && btnAdd.addEventListener('click', ()=>{
+    const idx = parseInt(totalInput.value || '0', 10);
+    const temp = document.createElement('tbody');
+    // substitui __prefix__ por idx em todo o conteúdo do template
+    let html = tpl.innerHTML.replaceAll('__prefix__', idx);
+    temp.innerHTML = html.trim();
+    const row = temp.firstElementChild;
+    tbody.appendChild(row);
+    totalInput.value = idx + 1;
+    attachRowEvents(row);
+    // foco no primeiro campo
+    const first = row.querySelector('input,select,textarea');
+    first && first.focus();
+  });
+
+  // Quando remover linha sem can_delete, reindexa names para manter sequência (fallback)
+  function adjustIndexes(){
+    const rows = Array.from(tbody.querySelectorAll('tr.p-row'));
+    rows.forEach((tr, i)=>{
+      tr.querySelectorAll('input, select, textarea').forEach(el=>{
+        if(el.name && el.name.includes(`${prefix}-`)){
+          el.name = el.name.replace(new RegExp(`${prefix}-\\d+-`), `${prefix}-${i}-`);
+          el.id   = el.id.replace(new RegExp(`${prefix}-\\d+-`), `${prefix}-${i}-`);
+        }
+      });
+    });
+    totalInput.value = rows.length;
+  }
+})();
+</script>
+</body>
+</html>

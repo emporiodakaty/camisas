@@ -10,7 +10,7 @@ from .models import (
     Pedido, ItemPedido,
     Remessa, RemessaItem,
     FASE_CONSUMO, SIZE_ORDER,
-    Costureira, PagamentoCostureira,
+    Costureira, PagamentoCostureira, PessoaColeta
 )
 
 # =============================================================================
@@ -100,13 +100,10 @@ class ProdutoForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class VariacaoForm(BootstrapFormMixin, forms.ModelForm):
-    # força o campo "tamanho" a ser um select com os tamanhos definidos
-    tamanho = forms.ChoiceField(choices=TAMANHOS_CHOICES, label="Tamanho")
-
     class Meta:
         model = VariacaoProduto
         fields = [
-            "produto", "tamanho", "cor",
+            "produto", "tipo",
             "estoque_atual", "custo_unitario", "preco_sugerido",
         ]  # SKU é gerado automaticamente e não editável
         widgets = {
@@ -127,10 +124,12 @@ class VariacaoForm(BootstrapFormMixin, forms.ModelForm):
                 label="SKU",
                 required=False,
                 initial=self.instance.sku or "",
-                widget=forms.TextInput(attrs={"readonly": "readonly", "class": "form-control"})
+                widget=forms.TextInput(
+                    attrs={"readonly": "readonly", "class": "form-control"}
+                ),
             )
             self.order_fields([
-                "produto", "tamanho", "cor", "sku_view",
+                "produto", "tipo", "sku_view",
                 "estoque_atual", "custo_unitario", "preco_sugerido",
             ])
 
@@ -150,6 +149,7 @@ class VariacaoForm(BootstrapFormMixin, forms.ModelForm):
         if commit:
             obj.save()
         return obj
+
 
 
 class FichaItemForm(BootstrapFormMixin, forms.ModelForm):
@@ -181,14 +181,20 @@ class PedidoForm(BootstrapFormMixin, forms.ModelForm):
         model = Pedido
         fields = [
             "empresa", "cliente", "status",
-            "numero_orcamento", "validade", "condicoes", "arte",
+            "numero_orcamento", "validade", "data_entrega",  # <-- ADICIONADO
+            "condicoes", "arte",
             "desconto_percentual", "acrescimo_percentual", "observacao",
         ]
         widgets = {
             "validade": forms.DateInput(attrs={"type": "date"}),
+            "data_entrega": forms.DateInput(attrs={"type": "date"}),  # <-- NOVO
             "arte": forms.ClearableFileInput(attrs={"accept": "image/*"}),
-            "desconto_percentual": forms.NumberInput(attrs={"step": "0.01", "min": "0", "max": "100"}),
-            "acrescimo_percentual": forms.NumberInput(attrs={"step": "0.01", "min": "0", "max": "100"}),
+            "desconto_percentual": forms.NumberInput(attrs={
+                "step": "0.01", "min": "0", "max": "100"
+            }),
+            "acrescimo_percentual": forms.NumberInput(attrs={
+                "step": "0.01", "min": "0", "max": "100"
+            }),
         }
 
     def clean_desconto_percentual(self):
@@ -207,12 +213,61 @@ class PedidoForm(BootstrapFormMixin, forms.ModelForm):
 class ItemPedidoForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = ItemPedido
-        fields = ["variacao", "quantidade", "preco_unitario"]
+        fields = [
+            "variacao",
+            "quantidade",
+            "preco_unitario",
+            "nome_personalizado",
+            "numero_camisa",
+            "outra_info",
+            "incluir_short",
+            "tamanho_short",
+        ]
         widgets = {
-            "quantidade":     forms.NumberInput(attrs={"step": "0.01", "min": "0.01"}),
+            "quantidade": forms.NumberInput(attrs={"step": "0.01", "min": "0.01"}),
             "preco_unitario": forms.NumberInput(attrs={"step": "0.01", "min": "0"}),
+            "nome_personalizado": forms.TextInput(attrs={"placeholder": "Ex.: João"}),
+            "numero_camisa": forms.TextInput(attrs={"placeholder": "Ex.: 10"}),
+            "outra_info": forms.TextInput(attrs={"placeholder": "Ex.: Capitão"}),
+            "incluir_short": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "tamanho_short": forms.TextInput(attrs={"placeholder": "Ex.: M"}),
         }
 
+from django.forms import inlineformset_factory
+from .models import ItemPedido, PersonalizacaoItem
+
+# camisas/forms.py
+class PersonalizacaoItemForm(forms.ModelForm):
+    class Meta:
+        model = PersonalizacaoItem
+        fields = [
+            "nome",
+            "numero",
+            "outra_info",
+            "tamanho_camisa",
+            "quantidade",        # 🔹 incluído
+            "incluir_short",
+            "tamanho_short",
+        ]
+        widgets = {
+            "tamanho_camisa": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "quantidade": forms.NumberInput(attrs={
+                "class": "form-control form-control-sm",
+                "min": "1",
+                "step": "1"
+            }),
+            "tamanho_short": forms.Select(attrs={"class": "form-select form-select-sm"}),
+        }
+
+
+
+PersonalizacaoItemFormSet = inlineformset_factory(
+    ItemPedido,
+    PersonalizacaoItem,
+    form=PersonalizacaoItemForm,
+    extra=1,
+    can_delete=True
+)
 
 class ArtePedidoForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
@@ -511,19 +566,41 @@ from django import forms
 from django.utils import timezone
 from .models import ColetaPedido
 
-class ColetaCreateForm(forms.Form):
-    modo = forms.ChoiceField(choices=ColetaPedido.MODOS, initial=ColetaPedido.MODO_SIMPL)
-    expira_em = forms.DateTimeField(
-        required=False,
-        help_text="Opcional. Deixe em branco para não expirar.",
-        widget=forms.DateTimeInput(attrs={"type": "datetime-local"})
-    )
+class ColetaCreateForm(forms.ModelForm):
+    class Meta:
+        model = ColetaPedido
+        fields = ["modo", "expiracao"]
 
-    def clean_expira_em(self):
-        v = self.cleaned_data.get("expira_em")
+        widgets = {
+            "expiracao": forms.DateTimeInput(attrs={"type": "datetime-local"}),
+        }
+        help_texts = {
+            "expiracao": "Opcional. Deixe em branco para não expirar.",
+        }
+
+    def clean_expiracao(self):
+        v = self.cleaned_data.get("expiracao")
         if v and v < timezone.now():
             raise forms.ValidationError("A data de expiração não pode ser no passado.")
         return v
+
+# camisas/forms.py
+from django import forms
+from .models import PessoaColeta
+
+class PessoaColetaForm(forms.ModelForm):
+    class Meta:
+        model = PessoaColeta
+        fields = ["nome", "numero", "tamanho", "status_pagamento", "valor"]
+
+        widgets = {
+            "nome": forms.TextInput(attrs={"class": "form-control"}),
+            "numero": forms.TextInput(attrs={"class": "form-control"}),
+            "tamanho": forms.TextInput(attrs={"class": "form-control"}),
+            "status_pagamento": forms.Select(attrs={"class": "form-select"}),
+            "valor": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
+        }
+
 
 # camisas/forms.py
 from django import forms
@@ -535,3 +612,8 @@ class AlterarClientePedidoForm(forms.Form):
         queryset=Cliente.objects.all().order_by("nome"),
         widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
     )
+
+class PessoaColetaForm(forms.ModelForm):
+    class Meta:
+        model = PessoaColeta
+        fields = ["nome", "numero", "tamanho", "valor", "status_pagamento"]

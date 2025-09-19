@@ -27,6 +27,66 @@
 
 <main class="container py-4">
   {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
+
+{# ===== RESUMO DE ERROS (sem parênteses) ===== #}
+{% if form.errors or form.non_field_errors or formset.non_form_errors or formset.errors %}
+  <div class="alert alert-danger">
+    <strong>Corrija os erros abaixo para salvar o pedido:</strong>
+    <ul class="mb-0 mt-2">
+      {# Pedido (form principal) #}
+      {% for err in form.non_field_errors %}<li>{{ err }}</li>{% endfor %}
+      {% for name, errs in form.errors.items %}
+        {% for e in errs %}<li>{{ name|capfirst }}: {{ e }}</li>{% endfor %}
+      {% endfor %}
+
+      {# Itens (formset) #}
+      {% for err in formset.non_form_errors %}<li>{{ err }}</li>{% endfor %}
+      {% for f in formset.forms %}
+        {% if f.non_field_errors %}
+          <li>Um item possui erros:
+            <ul>
+              {% for err in f.non_field_errors %}<li>{{ err }}</li>{% endfor %}
+            </ul>
+          </li>
+        {% endif %}
+        {% if f.errors %}
+          <li>Campos com erro neste item:
+            <ul>
+              {% for name, errs in f.errors.items %}
+                {% for e in errs %}<li>{{ name|capfirst }}: {{ e }}</li>{% endfor %}
+              {% endfor %}
+            </ul>
+          </li>
+        {% endif %}
+
+        {# Personalizações do item (sub-formset) #}
+        {% if f.personalizacoes %}
+          {% if f.personalizacoes.non_form_errors %}
+            <li>Personalizações com erro:
+              <ul>
+                {% for err in f.personalizacoes.non_form_errors %}<li>{{ err }}</li>{% endfor %}
+              </ul>
+            </li>
+          {% endif %}
+          {# Percorre cada formulário de personalização e lista seus erros #}
+          {% for pf in f.personalizacoes.forms %}
+            {% if pf.errors %}
+              <li>Uma linha de personalização possui erros:
+                <ul>
+                  {% for name, errs in pf.errors.items %}
+                    {% for e in errs %}<li>{{ name|capfirst }}: {{ e }}</li>{% endfor %}
+                  {% endfor %}
+                </ul>
+              </li>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+
   <div class="card p-3 bg-white">
     <h2 class="h6 mb-3">{% if form.instance.pk %}Editar{% else %}Novo{% endif %} Pedido / Orçamento</h2>
 
@@ -38,46 +98,69 @@
       <div class="row g-3">
         <div class="col-md-4">
           <label class="form-label">Empresa</label>
-          {{ form.empresa|add_class:"form-select" }}
+          {{ form.empresa|add_class:"form-select"|attr:"required" }}
+          {% for e in form.empresa.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
         </div>
+
         <div class="col-md-4">
-          <label class="form-label">Cliente</label>
-          {{ form.cliente|add_class:"form-select" }}
+          <label class="form-label d-flex align-items-center justify-content-between">
+            <span>Cliente</span>
+            <span class="ms-2">
+              <a class="btn btn-sm btn-outline-success" target="_blank" href="{% url 'camisas:cliente_create' %}?next={{ request.path|urlencode }}">+ Cliente</a>
+              <a class="btn btn-sm btn-outline-secondary" href="" onclick="location.reload();return false;" title="Atualizar lista">↻</a>
+            </span>
+          </label>
+          {{ form.cliente|add_class:"form-select"|attr:"required" }}
+          {% for e in form.cliente.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
         </div>
+
         <div class="col-md-4">
           <label class="form-label">Status</label>
-          {{ form.status|add_class:"form-select" }}
+          {{ form.status|add_class:"form-select"|attr:"required" }}
+          {% for e in form.status.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
         </div>
 
         <div class="col-md-4">
           <label class="form-label">Nº Orçamento</label>
           {{ form.numero_orcamento|add_class:"form-control" }}
+          {% for e in form.numero_orcamento.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
         </div>
         <div class="col-md-4">
           <label class="form-label">Validade</label>
           {{ form.validade|add_class:"form-control" }}
+          {% for e in form.validade.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Data de Entrega</label>
+          {{ form.data_entrega|add_class:"form-control" }}
+          {% for e in form.data_entrega.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
         </div>
         <div class="col-md-4">
           <label class="form-label">Arte da camisa (imagem)</label>
           {{ form.arte|add_class:"form-control" }}
+          {% for e in form.arte.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
         </div>
 
         <div class="col-md-6">
           <label class="form-label">Desconto (%)</label>
           {{ form.desconto_percentual|add_class:"form-control perc" }}
+          {% for e in form.desconto_percentual.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
         </div>
         <div class="col-md-6">
           <label class="form-label">Acréscimo (%)</label>
           {{ form.acrescimo_percentual|add_class:"form-control perc" }}
+          {% for e in form.acrescimo_percentual.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
         </div>
 
         <div class="col-12">
           <label class="form-label">Condições (pagamento, entrega, observações)</label>
           {{ form.condicoes|add_class:"form-control" }}
+          {% for e in form.condicoes.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
         </div>
         <div class="col-12">
           <label class="form-label">Observações internas</label>
           {{ form.observacao|add_class:"form-control" }}
+          {% for e in form.observacao.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
         </div>
       </div>
 
@@ -92,43 +175,158 @@
         <table class="table align-middle">
           <thead>
             <tr>
-              <th style="width:42%">Variação / Produto</th>
-              <th style="width:14%">Qtd</th>
-              <th style="width:18%">Preço unit. (R$)</th>
-              <th style="width:18%">Subtotal</th>
-              <th style="width:8%"></th>
+              <th style="width:40%">Variação / Produto</th>
+              <th style="width:15%">Qtd</th>
+              <th style="width:15%">Preço unit. (R$)</th>
+              <th style="width:20%">Subtotal</th>
+              <th style="width:10%"></th>
             </tr>
           </thead>
           <tbody id="bodyItens">
             {% for f in formset.forms %}
               <tr class="row-item">
                 <td>
-                  {{ f.variacao|add_class:"form-select item-variacao" }}
+                  <select name="{{ f.variacao.html_name }}" class="form-select item-variacao" id="{{ f.variacao.id_for_label }}" required>
+                    <option value="">-- selecione --</option>
+                  </select>
                   {{ f.id }}
                   {% if formset.can_delete %}{{ f.DELETE|add_class:"d-none del-flag" }}{% endif %}
+                  {% for e in f.variacao.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
                 </td>
-                <td>{{ f.quantidade|add_class:"form-control item-qty"|attr:"step=0.01"|attr:"min=0.01" }}</td>
-                <td>{{ f.preco_unitario|add_class:"form-control item-price"|attr:"step=0.01"|attr:"min=0" }}</td>
+                <td>
+                  {{ f.quantidade|add_class:"form-control item-qty"|attr:"step=0.01"|attr:"min=0.01"|attr:"required" }}
+                  {% for e in f.quantidade.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+                </td>
+                <td>
+                  {{ f.preco_unitario|add_class:"form-control item-price"|attr:"step=0.01"|attr:"min=0"|attr:"required" }}
+                  {% for e in f.preco_unitario.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+                </td>
                 <td class="item-subtotal fw-semibold">R$ 0,00</td>
                 <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger btn-remove">Remover</button></td>
+              </tr>
+
+              <tr class="bg-light small">
+                <td colspan="5">
+                  <div class="personalizacoes-wrapper" data-prefix="{{ f.personalizacoes.prefix }}">
+                    <h6 class="small fw-bold">Personalizações deste item</h6>
+                    {{ f.personalizacoes.management_form }}
+                    <table class="table table-sm mb-2">
+                      <thead>
+                        <tr>
+                          <th>Nome</th>
+                          <th>Número</th>
+                          <th>Outra info</th>
+                          <th>Tam. Camisa</th>
+                          <th>Qtd</th>
+                          <th>Short?</th>
+                          <th>Tam. Short</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for p in f.personalizacoes.forms %}
+                          <tr class="p-row">
+                            <td>{{ p.nome|add_class:"form-control form-control-sm" }}{% for e in p.nome.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
+                            <td>{{ p.numero|add_class:"form-control form-control-sm" }}{% for e in p.numero.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
+                            <td>{{ p.outra_info|add_class:"form-control form-control-sm" }}{% for e in p.outra_info.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
+                            <td>{{ p.tamanho_camisa|add_class:"form-select form-select-sm" }}{% for e in p.tamanho_camisa.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
+                            <td>{{ p.quantidade|add_class:"form-control form-control-sm"|attr:"min=1"|attr:"step=1" }}{% for e in p.quantidade.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
+                            <td class="text-center">{{ p.incluir_short }}</td>
+                            <td>{{ p.tamanho_short|add_class:"form-control form-control-sm" }}{% for e in p.tamanho_short.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
+                            <td class="text-end">
+                              {% if f.personalizacoes.can_delete %}
+                                {{ p.DELETE|add_class:"d-none del-flag" }}
+                              {% endif %}
+                              <button type="button" class="btn btn-sm btn-outline-danger btn-remove-personalizacao">Remover</button>
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+
+                    <template class="tpl-personalizacao">
+                      <tr class="p-row">
+                        <td>{{ f.personalizacoes.empty_form.nome|add_class:"form-control form-control-sm" }}</td>
+                        <td>{{ f.personalizacoes.empty_form.numero|add_class:"form-control form-control-sm" }}</td>
+                        <td>{{ f.personalizacoes.empty_form.outra_info|add_class:"form-control form-control-sm" }}</td>
+                        <td>{{ f.personalizacoes.empty_form.tamanho_camisa|add_class:"form-select form-select-sm" }}</td>
+                        <td>{{ f.personalizacoes.empty_form.quantidade|add_class:"form-control form-control-sm"|attr:"min=1"|attr:"step=1" }}</td>
+                        <td class="text-center">{{ f.personalizacoes.empty_form.incluir_short }}</td>
+                        <td>{{ f.personalizacoes.empty_form.tamanho_short|add_class:"form-control form-control-sm" }}</td>
+                        <td class="text-end">
+                          {% if f.personalizacoes.can_delete %}
+                            {{ f.personalizacoes.empty_form.DELETE|add_class:"d-none del-flag" }}
+                          {% endif %}
+                          <button type="button" class="btn btn-sm btn-outline-danger btn-remove-personalizacao">Remover</button>
+                        </td>
+                      </tr>
+                    </template>
+
+                    <button type="button" class="btn btn-sm btn-outline-primary btn-add-personalizacao">+ Adicionar personalização</button>
+                  </div>
+                </td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
 
-      <!-- Template de linha (empty_form) -->
-      <template id="tplRow">
+      <!-- PROTÓTIPOS PARA NOVOS ITENS -->
+      <template id="tplItemRow">
         <tr class="row-item">
           <td>
-            {{ formset.empty_form.variacao|add_class:"form-select item-variacao" }}
+            {{ formset.empty_form.variacao|add_class:"form-select item-variacao"|attr:"required" }}
             {{ formset.empty_form.id }}
             {% if formset.can_delete %}{{ formset.empty_form.DELETE|add_class:"d-none del-flag" }}{% endif %}
           </td>
-          <td>{{ formset.empty_form.quantidade|add_class:"form-control item-qty"|attr:"step=0.01"|attr:"min=0.01" }}</td>
-          <td>{{ formset.empty_form.preco_unitario|add_class:"form-control item-price"|attr:"step=0.01"|attr:"min=0" }}</td>
+          <td>{{ formset.empty_form.quantidade|add_class:"form-control item-qty"|attr:"step=0.01"|attr:"min=0.01"|attr:"required" }}</td>
+          <td>{{ formset.empty_form.preco_unitario|add_class:"form-control item-price"|attr:"step=0.01"|attr:"min=0"|attr:"required" }}</td>
           <td class="item-subtotal fw-semibold">R$ 0,00</td>
           <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger btn-remove">Remover</button></td>
+        </tr>
+      </template>
+
+      <template id="tplPersonalizacoesBlock">
+        <tr class="bg-light small">
+          <td colspan="5">
+            <div class="personalizacoes-wrapper" data-prefix="__PFX__">
+              <h6 class="small fw-bold">Personalizações deste item</h6>
+              <input type="hidden" name="__PFX__-TOTAL_FORMS" value="0">
+              <input type="hidden" name="__PFX__-INITIAL_FORMS" value="0">
+              <input type="hidden" name="__PFX__-MIN_NUM_FORMS" value="0">
+              <input type="hidden" name="__PFX__-MAX_NUM_FORMS" value="1000">
+              <table class="table table-sm mb-2">
+                <thead>
+                  <tr>
+                    <th>Nome</th><th>Número</th><th>Outra info</th><th>Tam. Camisa</th><th>Qtd</th><th>Short?</th><th>Tam. Short</th><th></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <template class="tpl-personalizacao">
+                <tr class="p-row">
+                  <td><input type="text" name="__PFX__-__PITEM__-nome" class="form-control form-control-sm"></td>
+                  <td><input type="text" name="__PFX__-__PITEM__-numero" class="form-control form-control-sm"></td>
+                  <td><input type="text" name="__PFX__-__PITEM__-outra_info" class="form-control form-control-sm"></td>
+                  <td>
+                    <select name="__PFX__-__PITEM__-tamanho_camisa" class="form-select form-select-sm">
+                      <option value=""></option>
+                      <option>PP</option><option>P</option><option>M</option><option>G</option><option>GG</option><option>XG</option>
+                      <option>PP-BL</option><option>P-BL</option><option>M-BL</option><option>G-BL</option><option>GG-BL</option><option>XG-BL</option>
+                    </select>
+                  </td>
+                  <td><input type="number" min="1" step="1" value="1" name="__PFX__-__PITEM__-quantidade" class="form-control form-control-sm"></td>
+                  <td class="text-center"><input type="checkbox" name="__PFX__-__PITEM__-incluir_short"></td>
+                  <td><input type="text" name="__PFX__-__PITEM__-tamanho_short" class="form-control form-control-sm"></td>
+                  <td class="text-end">
+                    <input type="checkbox" class="del-flag d-none" name="__PFX__-__PITEM__-DELETE">
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-remove-personalizacao">Remover</button>
+                  </td>
+                </tr>
+              </template>
+              <button type="button" class="btn btn-sm btn-outline-primary btn-add-personalizacao">+ Adicionar personalização</button>
+            </div>
+          </td>
         </tr>
       </template>
 
@@ -159,26 +357,18 @@
 
 <script>
 (function(){
-  // ===== Variacoes vindas da view =====
   const VARIACOES = {{ variacoes_json|safe }};
-
-  // utils
   const fmtBR = v => (v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const toNum = v => { const x=(v||'').toString().replace(/\./g,'').replace(',','.').replace(/[^\d.-]/g,''); const n=parseFloat(x); return isNaN(n)?0:n; };
 
-  const $form    = document.getElementById('formPedido');
-  const $tbody   = document.getElementById('bodyItens');
-  const $tpl     = document.getElementById('tplRow');
+  const $form = document.getElementById('formPedido');
+  const $tbody = document.getElementById('bodyItens');
   const $empresa = document.getElementById('{{ form.empresa.id_for_label }}');
-
   const $desc = document.getElementById('{{ form.desconto_percentual.id_for_label }}');
   const $acrc = document.getElementById('{{ form.acrescimo_percentual.id_for_label }}');
   const $tSub = document.getElementById('tSub'), $tDesc = document.getElementById('tDesc'), $tAcr = document.getElementById('tAcr'), $tTotal = document.getElementById('tTotal');
 
-  // formset management
-  const $mgTotal = document.querySelector('input[name="{{ formset.management_form.TOTAL_FORMS.html_name }}"]');
-
-  // indexa variações por empresa
+  // Indexa variações por empresa
   const byEmp = {};
   VARIACOES.forEach(v=>{
     const eid = String(v['produto__empresa_id']||'');
@@ -189,7 +379,7 @@
     const prev = keepSelected ? select.value : '';
     const list = empresaId ? (byEmp[String(empresaId)]||[]) : VARIACOES;
     select.innerHTML = '<option value="">-- selecione --</option>' + list.map(v=>{
-      const rotulo = `${v['produto__nome']} ${v.tamanho}/${v.cor} · SKU ${v.sku}`;
+      const rotulo = `${v['produto__nome']} / ${v.tipo}`;
       return `<option value="${v.id}" data-preco="${v.preco_sugerido||0}">${rotulo}</option>`;
     }).join('');
     if (keepSelected && prev){
@@ -203,14 +393,12 @@
     return toNum(opt?.dataset?.preco || 0);
   }
 
-  // Preenche o preço se estiver vazio/zero
-  function ensurePrice(tr){
+  function setSuggestedPrice(tr){
     const $sel = tr.querySelector('.item-variacao');
     const $prc = tr.querySelector('.item-price');
-    if (!$sel || !$prc) return;
-    const cur = toNum($prc.value);
+    if(!$sel || !$prc) return;
     const sug = getSuggested($sel);
-    if ((isNaN(cur) || cur <= 0) && sug > 0){
+    if(sug > 0){
       $prc.value = sug.toFixed(2).replace('.', ',');
     }
   }
@@ -222,35 +410,21 @@
     const $btn = tr.querySelector('.btn-remove');
     const $del = tr.querySelector('.del-flag');
 
-    // monta options com data-preco preservando seleção
     if($empresa){ buildOptions($sel, $empresa.value, true); }
-    // garante preço preenchido ao carregar
-    ensurePrice(tr);
+    setSuggestedPrice(tr);
 
-    $sel.addEventListener('change', ()=>{
-      // sempre que trocar a variação, se preço estiver vazio/zero, preenche com sugerido
-      ensurePrice(tr);
-      recalc();
-    });
-
+    $sel.addEventListener('change', ()=>{ setSuggestedPrice(tr); recalc(); });
     [$qty,$prc].forEach(el=> el && el.addEventListener('input', recalc));
 
-    $btn.addEventListener('click', ()=>{
+    $btn && $btn.addEventListener('click', ()=>{
       if($del){ if($del.type==='checkbox') $del.checked = true; tr.style.display='none'; }
-      else { tr.remove(); }
+      else {
+        const next = tr.nextElementSibling;
+        if(next && next.classList.contains('bg-light')) next.remove();
+        tr.remove();
+      }
       recalc();
     });
-  }
-
-  function addRow(){
-    const idx = parseInt($mgTotal.value,10);
-    const html = $tpl.innerHTML.replace(/__prefix__/g, idx);
-    const wrap = document.createElement('tbody'); wrap.innerHTML = html;
-    const row = wrap.firstElementChild;
-    $tbody.appendChild(row);
-    $mgTotal.value = idx + 1;
-    bindRow(row);   // já cria opções e preenche preço quando selecionar
-    recalc();
   }
 
   function recalc(){
@@ -266,48 +440,104 @@
     const d = Math.max(0,toNum($desc?.value)), a = Math.max(0,toNum($acrc?.value));
     const valDesc = subtotal*(d/100), valAcr = subtotal*(a/100);
     const total = subtotal - valDesc + valAcr;
-
     $tSub.textContent = fmtBR(subtotal);
     $tDesc.textContent = fmtBR(valDesc);
     $tAcr.textContent  = fmtBR(valAcr);
     $tTotal.textContent= fmtBR(total);
   }
 
-  // binds iniciais
-  $tbody.querySelectorAll('.row-item').forEach(bindRow);
-  // garantia extra: se algum ficar sem preço, tenta preencher pelo selecionado
-  $tbody.querySelectorAll('.row-item').forEach(ensurePrice);
+  // Linhas existentes
+  $tbody.querySelectorAll('.row-item').forEach(tr=>{ bindRow(tr); setSuggestedPrice(tr); });
   recalc();
 
-  document.getElementById('btnAddRow').addEventListener('click', addRow);
-  [$desc,$acrc].forEach(el=> el && el.addEventListener('input', recalc));
-
-  // ao trocar a empresa, reconstrói as options e tenta preservar seleção válida
+  // Refiltra por empresa
   $empresa && $empresa.addEventListener('change', ()=>{
     $tbody.querySelectorAll('.row-item').forEach(tr=>{
       const $sel = tr.querySelector('.item-variacao');
       const selectedBefore = $sel.value;
       buildOptions($sel, $empresa.value, true);
-      // se a seleção anterior não existir nessa empresa, zera e o preço será reavaliado
       if ($sel.value !== selectedBefore){
         $sel.dispatchEvent(new Event('change'));
       }else{
-        ensurePrice(tr);
-        recalc();
+        setSuggestedPrice(tr); recalc();
       }
     });
   });
 
-  // validação rápida + máscara percentuais
+  // Validação HTML5
   $form.addEventListener('submit', (e)=>{
-    if(!$form.checkValidity()){ e.preventDefault(); e.stopPropagation(); $form.classList.add('was-validated'); }
+    if(!$form.checkValidity()){
+      e.preventDefault(); e.stopPropagation(); $form.classList.add('was-validated');
+      const firstInvalid = $form.querySelector(':invalid');
+      if(firstInvalid){ firstInvalid.scrollIntoView({behavior:'smooth',block:'center'}); firstInvalid.focus(); }
+    }
   });
-  document.addEventListener('input',(ev)=>{
-    if(!ev.target.classList.contains('perc')) return;
-    const num = toNum(ev.target.value);
-    if(!isNaN(num)) ev.target.value = num.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  // Personalizações (linhas existentes)
+  function addPersonalizacao(wrapper){
+    const prefix = wrapper.dataset.prefix;
+    const totalInput = wrapper.querySelector(`input[name="${prefix}-TOTAL_FORMS"]`);
+    const tbody = wrapper.querySelector('tbody');
+    const tpl = wrapper.querySelector('template.tpl-personalizacao');
+    if(!totalInput || !tbody || !tpl) return;
+    const idx = parseInt(totalInput.value || "0", 10);
+    const temp = document.createElement('tbody');
+    temp.innerHTML = tpl.innerHTML.replaceAll('__prefix__', idx).trim();
+    const row = temp.firstElementChild;
+    tbody.appendChild(row);
+    totalInput.value = idx + 1;
+  }
+
+  document.addEventListener('click', function(ev){
+    const addBtn = ev.target.closest('.btn-add-personalizacao');
+    if(addBtn){
+      const wrapper = addBtn.closest('.personalizacoes-wrapper');
+      if(wrapper) addPersonalizacao(wrapper);
+    }
+    const rmBtn = ev.target.closest('.btn-remove-personalizacao');
+    if(rmBtn){
+      const row = rmBtn.closest('tr.p-row');
+      if(!row) return;
+      const del = row.querySelector('.del-flag');
+      if(del){ del.checked = true; row.style.display = 'none'; }
+      else{ row.remove(); }
+    }
+  });
+
+  // NOVO ITEM
+  const btnAddRow = document.getElementById('btnAddRow');
+  const tplItemRow = document.getElementById('tplItemRow');
+  const tplPersBlock = document.getElementById('tplPersonalizacoesBlock');
+  const mgmtTotal = document.querySelector('input[name="{{ formset.prefix }}-TOTAL_FORMS"]');
+
+  btnAddRow && btnAddRow.addEventListener('click', ()=>{
+    const idx = parseInt(mgmtTotal.value || "0", 10);
+
+    // item
+    const temp1 = document.createElement('tbody');
+    temp1.innerHTML = tplItemRow.innerHTML.replaceAll('__prefix__', idx).trim();
+    const itemRow = temp1.firstElementChild;
+
+    // bloco de personalizações vazio para esse item
+    const temp2 = document.createElement('tbody');
+    const pfx = `personalizacoes-${idx}`;
+    temp2.innerHTML = tplPersBlock.innerHTML.replaceAll('__PFX__', pfx).replaceAll('__PITEM__', '__PITEM__').trim();
+    const persBlock = temp2.firstElementChild;
+
+    $tbody.appendChild(itemRow);
+    $tbody.appendChild(persBlock);
+
+    mgmtTotal.value = idx + 1;
+
+    const $sel = itemRow.querySelector('.item-variacao');
+    const $wrapper = persBlock.querySelector('.personalizacoes-wrapper');
+    $wrapper.dataset.prefix = pfx;
+
+    buildOptions($sel, $empresa ? $empresa.value : null, false);
+    bindRow(itemRow);
     recalc();
   });
+
 })();
 </script>
 

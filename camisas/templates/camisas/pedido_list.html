@@ -79,9 +79,8 @@
         <thead>
           <tr>
             <th style="width:8%">#</th>
-            <th style="width:18%">Nº Orçamento</th>
+            <th style="width:20%">Orçamento / Entrega</th>
             <th style="width:22%">Cliente</th>
-            <th style="width:18%">Empresa</th>
             <th style="width:14%">Status</th>
             <th style="width:12%">Total</th>
             <th style="width:8%" class="text-end">Ações</th>
@@ -92,7 +91,16 @@
           <tr>
             <td class="text-monospace">{{ r.id }}</td>
             <td>
-              {% if r.numero_orcamento %}{{ r.numero_orcamento }}{% else %}<span class="text-muted">—</span>{% endif %}
+              {% if r.numero_orcamento %}
+                {{ r.numero_orcamento }}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+
+              {% if r.data_entrega %}
+                <div class="mini">Entrega: {{ r.data_entrega|date:"d/m/Y" }}</div>
+              {% endif %}
+
               {% if r.approval_status %}
               <div class="mini">Aprovação:
                 <span class="badge {% if r.approval_status == 'APRV' %}text-bg-success{% elif r.approval_status == 'REJ' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
@@ -111,7 +119,6 @@
                 </div>
               {% endif %}
             </td>
-            <td>{{ r.empresa }}</td>
             <td>
               <span class="badge {% if r.status == 'FAT' %}text-bg-success{% elif r.status == 'PROD' %}text-bg-primary{% elif r.status == 'PEN' %}text-bg-warning{% elif r.status == 'ORC' %}text-bg-secondary{% else %}text-bg-dark{% endif %}">
                 {{ r.status_label }}

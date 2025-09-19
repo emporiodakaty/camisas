@@ -97,12 +97,18 @@ urlpatterns = [
     path("costureiras/home/", views.costureiras_home, name="costureiras_home"),
     path("clientes/home/", views.clientes_home, name="clientes_home"),
 
+    path("coleta/<int:coleta_id>/pessoa/<int:pessoa_id>/editar/", views.pessoa_coleta_edit, name="pessoa_coleta_edit"),
+    path("coleta/<int:coleta_id>/pessoa/<int:pessoa_id>/pagamento/", views.pessoa_coleta_pagamento, name="pessoa_coleta_pagamento"),
+
+
+    path("itens/<int:item_id>/tamanhos/editar/",views.item_tamanhos_editar,name="item_tamanhos_editar"),
+
     # Remessas rápidas
     path("pedidos/<int:pk>/gerar-remessa/", views.pedido_gerar_remessa, name="pedido_gerar_remessa"),
     path("remessas/quick-create-by-produto/", views.remessa_quick_create_by_produto, name="remessa_quick_create_by_produto"),
     path("remessas/<int:pk>/gerar-proxima/", views.remessa_generate_next, name="remessa_generate_next"),
 
-    
+    path("coleta/<int:coleta_id>/pessoa/add/", views.pessoa_coleta_add, name="pessoa_coleta_add"),
     # Cotação de preços
     path("pedidos/<int:pk>/cotacao/", views.pedido_cotacao_precos, name="pedido_cotacao_precos"),
 

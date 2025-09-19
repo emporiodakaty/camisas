@@ -34,6 +34,8 @@
 <main class="container py-4">
   {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
 
+  {% now "U" as now_ts %}
+
   <!-- Cabeçalho -->
   <div class="card p-3 bg-white mb-3">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -156,12 +158,19 @@
       </div>
     </div>
 
-    <!-- Arte da camisa -->
+    <!-- Arte da camisa (com selo Arte anexada / Sem arte) -->
     <div class="col-12 col-lg-6">
       <div class="card p-3 bg-white h-100">
         <div class="d-flex justify-content-between align-items-center mb-2">
           <h2 class="h6 m-0">Arte da camisa</h2>
-          {% if pedido.arte_has_file %}<span class="mini">Atualize a arte se necessário</span>{% endif %}
+          <div class="d-flex align-items-center gap-2 mini">
+            {% if pedido.arte_has_file %}
+              <span class="badge text-bg-success">Arte anexada</span>
+              <span class="text-muted d-none d-sm-inline">Atualize a arte se necessário</span>
+            {% else %}
+              <span class="badge text-bg-secondary">Sem arte</span>
+            {% endif %}
+          </div>
         </div>
 
         {% if pedido.arte_has_file %}
@@ -196,7 +205,7 @@
               <span class="pill">{{ coleta_obj.get_modo_display }}</span>
               {% if coleta_obj.concluido_em %}
                 <span class="badge text-bg-success">Concluída</span>
-              {% elif coleta_obj.expiracao and coleta_obj.expiracao|date:"U" < now|date:"U" %}
+              {% elif coleta_obj.expiracao and coleta_obj.expiracao|date:"U" < now_ts %}
                 <span class="badge text-bg-danger">Expirada</span>
               {% else %}
                 <span class="badge text-bg-secondary">Pendente</span>
@@ -246,56 +255,6 @@
                 • {{ coleta_obj.concluido_em|date:"d/m/Y H:i" }}
               </div>
 
-              {% if coleta_obj.payload.tipo == 'SIMPLES' %}
-                <div class="table-responsive mt-2">
-                  <table class="table align-middle">
-                    <thead><tr><th>Tamanho</th><th class="text-end">Qtd</th></tr></thead>
-                    <tbody>
-                      {% for row in coleta_obj.payload.tamanhos %}
-                        <tr><td>{{ row.tamanho }}</td><td class="text-end">{{ row.qtd }}</td></tr>
-                      {% endfor %}
-                    </tbody>
-                    <tfoot><tr class="fw-bold"><td>Total</td><td class="text-end">{{ coleta_obj.payload.total }}</td></tr></tfoot>
-                  </table>
-                </div>
-
-              {% elif coleta_obj.payload.tipo == 'NOMES' %}
-                <div class="table-responsive mt-2">
-                  <table class="table align-middle">
-                    <thead><tr><th>Nome</th><th>Número</th><th>Tamanho</th></tr></thead>
-                    <tbody>
-                      {% for p in coleta_obj.payload.pessoas %}
-                        <tr><td>{{ p.nome }}</td><td>{{ p.numero|default:"—" }}</td><td>{{ p.tamanho }}</td></tr>
-                      {% endfor %}
-                    </tbody>
-                    <tfoot><tr class="fw-bold"><td colspan="2">Total</td><td>{{ coleta_obj.payload.total }}</td></tr></tfoot>
-                  </table>
-                </div>
-
-              {% elif coleta_obj.payload.tipo == 'TIME' %}
-                <div class="table-responsive mt-2">
-                  <table class="table align-middle">
-                    <thead><tr><th>Nome</th><th>Número</th><th>Tamanho</th></tr></thead>
-                    <tbody>
-                      {% for j in coleta_obj.payload.jogadores %}
-                        <tr><td>{{ j.nome|default:"—" }}</td><td>{{ j.numero|default:"—" }}</td><td>{{ j.tamanho|default:"—" }}</td></tr>
-                      {% endfor %}
-                    </tbody>
-                    <tfoot><tr class="fw-bold"><td colspan="2">Total</td><td>{{ coleta_obj.payload.total }}</td></tr></tfoot>
-                  </table>
-                </div>
-              {% endif %}
-
-              {% if coleta_obj.obs_cliente %}
-                <div class="mini mt-2"><strong>Obs. do cliente:</strong> {{ coleta_obj.obs_cliente }}</div>
-              {% endif %}
-            </div>
-            {# ======= /ÁREA IMPRESSA DA COLETA ======= #}
-
-            <div class="d-flex justify-content-end mt-2">
-              <button type="button" class="btn btn-outline-dark btn-sm" onclick="printColeta()">Imprimir coleta</button>
-            </div>
-
           {% else %}
             {% if coleta_obj.expiracao %}
               <div class="mini mt-2">Expira em: {{ coleta_obj.expiracao|date:"d/m/Y H:i" }}</div>
@@ -316,22 +275,48 @@
       <table class="table align-middle">
         <thead>
           <tr>
-            <th style="width:36%">Produto</th>
-            <th style="width:16%">Variação</th>
-            <th style="width:12%">Qtd</th>
-            <th style="width:18%">Preço unit.</th>
-            <th style="width:18%">Subtotal</th>
+            <th style="width:30%">Produto</th>
+            <th style="width:10%">Qtd</th>
+            <th style="width:15%">Preço unit.</th>
+            <th style="width:15%">Subtotal</th>
           </tr>
         </thead>
         <tbody>
           {% for it in itens %}
           <tr>
             <td class="fw-semibold">{{ it.variacao.produto.nome }}</td>
-            <td>{{ it.variacao.tamanho }}/{{ it.variacao.cor }}</td>
             <td>{{ it.quantidade }}</td>
             <td>R$ {{ it.preco_unitario|floatformat:2 }}</td>
             <td>R$ {{ it.subtotal|floatformat:2 }}</td>
           </tr>
+
+          {% if it.personalizacoes.all %}
+          <tr class="bg-light small">
+            <td colspan="5">
+              <ul class="list-unstyled mb-2">
+                {% for p in it.personalizacoes.all %}
+                  <li>
+                    {% if p.nome %}<strong>{{ p.nome }}</strong>{% endif %}
+                    {% if p.numero %} #{{ p.numero }}{% endif %}
+                    {% if p.outra_info %} ({{ p.outra_info }}){% endif %}
+                    {% if p.tamanho_camisa %} • Camisa {{ p.tamanho_camisa }}{% endif %}
+                    {% if p.quantidade %} ({{ p.quantidade }} unid.){% endif %}
+                    {% if p.incluir_short %} • Short {{ p.tamanho_short|default:"—" }}{% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+
+              <!-- Botão para editar tamanhos do item -->
+              <div class="d-flex justify-content-end">
+                <a class="btn btn-sm btn-outline-warning"
+                   href="{% url 'camisas:item_tamanhos_editar' it.id %}">
+                  Editar tamanhos
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% endif %}
+
           {% empty %}
           <tr><td colspan="5" class="text-center text-muted py-4">Sem itens.</td></tr>
           {% endfor %}
@@ -351,11 +336,12 @@
       </div>
     </div>
   </div>
+
 </main>
 
 <script>
 (function(){
-  // ----- copiar link aprovação -----
+  // copiar link aprovação
   const btnCopy = document.getElementById('btnCopyLink');
   const $link   = document.getElementById('approvalLink');
   btnCopy && btnCopy.addEventListener('click', async ()=>{
@@ -410,7 +396,7 @@ Qualquer dúvida, pode responder por aqui. 😉`;
     }
   });
 
-  // ----- copiar link coleta -----
+  // copiar link coleta
   const btnCopyCol = document.getElementById('btnCopyColeta');
   const $coleta    = document.getElementById('coletaLink');
   btnCopyCol && btnCopyCol.addEventListener('click', async ()=>{
@@ -451,12 +437,12 @@ Obrigado!`;
   });
 })();
 
-// ===== Impressão somente da coleta =====
+// Impressão somente da coleta
 function printColeta(){
   const area = document.getElementById('coletaPrintArea');
   if(!area){ alert('Nada para imprimir.'); return; }
 
-  const meta = area.dataset; // empresa, pedido, cliente, modo, recebido
+  const meta = area.dataset;
 
   const w = window.open('', '_blank');
   const html = `

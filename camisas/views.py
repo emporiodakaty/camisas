@@ -25,6 +25,8 @@ from django.http import HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from .forms import PersonalizacaoItemFormSet
+
 from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods, require_POST
@@ -38,7 +40,7 @@ from .forms import (
     # Remessas
     RemessaForm, RemessaItemFormSet, RemessaReceiveFormSet,
     # Despesas
-    DespesaForm, ParcelaFormSet, CotacaoConcorrenteItemForm,
+    DespesaForm, ParcelaFormSet, CotacaoConcorrenteItemForm, PessoaColetaForm, PersonalizacaoItem
 )
 from .models import (
     Empresa, ParametrosEmpresa, Cliente, CategoriaInsumo, Insumo,
@@ -96,7 +98,6 @@ def home(request):
     # ---------------------------
     # BASES de consulta
     # ---------------------------
-    # Base por período (para listas/gráficos), respeitando filtros de status quando vierem:
     pedidos = Pedido.objects.select_related("cliente", "empresa")
     if empresa_id:
         pedidos = pedidos.filter(empresa_id=empresa_id)
@@ -104,15 +105,13 @@ def home(request):
         pedidos = pedidos.filter(status=status)
     pedidos = pedidos.filter(criado_em__date__gte=ini_date, criado_em__date__lte=fim_date)
 
-    # Base por período somente para KPIs de faturado/pendente (NÃO usa o filtro de status)
     base_kpi = Pedido.objects.all()
     if empresa_id:
         base_kpi = base_kpi.filter(empresa_id=empresa_id)
 
     # ---------------------------
-    # RECEITAS (corrigidas)
+    # RECEITAS
     # ---------------------------
-    # FATURADO: apenas status FAT; janela por faturado_em se a coluna existir, senão por criado_em
     fat_qs = base_kpi.filter(status="FAT")
     if hasattr(Pedido, "faturado_em"):
         fat_qs = fat_qs.filter(faturado_em__date__gte=ini_date, faturado_em__date__lte=fim_date)
@@ -124,7 +123,6 @@ def home(request):
     )["v"] or Decimal("0.00")
     qtd_faturados = fat_qs.count()
 
-    # PENDENTE: não FAT e não CANC, janela por criado_em
     pend_qs = base_kpi.exclude(status__in=["FAT", "CANC"]).filter(
         criado_em__date__gte=ini_date, criado_em__date__lte=fim_date
     )
@@ -132,11 +130,10 @@ def home(request):
         v=Coalesce(Sum(LINE_TOTAL, output_field=Money), ZERO_MONEY)
     )["v"] or Decimal("0.00")
 
-    # Ticket médio sobre faturados
     ticket_medio = (fat_total / qtd_faturados) if qtd_faturados else Decimal("0.00")
 
     # ---------------------------
-    # Totais por pedido (para listas/gráficos da janela filtrada)
+    # Totais por pedido
     # ---------------------------
     itens = ItemPedido.objects.filter(pedido__in=pedidos)
     totals_by_pedido = itens.values("pedido_id").annotate(
@@ -144,7 +141,7 @@ def home(request):
     )
     total_map = {r["pedido_id"]: r["total"] for r in totals_by_pedido}
 
-    # Produção no período (pela criação)
+    # Produção no período
     ops = OrdemProducao.objects.all()
     if empresa_id:
         ops = ops.filter(empresa_id=empresa_id)
@@ -170,8 +167,8 @@ def home(request):
         "window_label": f"{ini_date.strftime('%d/%m/%Y')} — {fim_date.strftime('%d/%m/%Y')}",
         "receita_faturado": float(fat_total),
         "receita_pendente": float(pend_total),
-        "receita": float(fat_total),            # compatibilidade com o template antigo
-        "qtd_pedidos": pedidos.count(),         # da janela (com filtro de status se usado)
+        "receita": float(fat_total),
+        "qtd_pedidos": pedidos.count(),
         "ticket_medio": float(ticket_medio),
         "qtd_faturados": qtd_faturados,
         "pecas_produzidas": float(pecas_produzidas),
@@ -180,7 +177,7 @@ def home(request):
         "clientes_novos": clientes_novos,
     }
 
-    # Pedidos recentes (top 10 da janela filtrada)
+    # Pedidos recentes
     recent = pedidos.order_by("-criado_em")[:10]
     pedidos_recent = [{
         "id": p.id,
@@ -191,19 +188,25 @@ def home(request):
         "criado_em": p.criado_em,
     } for p in recent]
 
-    # Baixo estoque (<=5)
+    # Baixo estoque
     baixo_estoque_qs = VariacaoProduto.objects.filter(estoque_atual__lte=5)
     if empresa_id:
         baixo_estoque_qs = baixo_estoque_qs.filter(produto__empresa_id=empresa_id)
-    baixo_estoque = baixo_estoque_qs.values("produto__nome", "tamanho", "cor", "estoque_atual")[:10]
+    baixo_estoque = baixo_estoque_qs.values(
+        "produto__nome", "tipo", "sku", "estoque_atual"
+    )[:10]
 
     # Produção recente
     ops_recent = ops.order_by("-criado_em").values(
-        "id", "variacao__produto__nome", "variacao__tamanho",
-        "variacao__cor", "quantidade", "criado_em"
+        "id",
+        "variacao__produto__nome",
+        "variacao__tipo",   # tamanho
+        "variacao__sku",    # identificador
+        "quantidade",
+        "criado_em"
     )[:10]
 
-    # Gráfico de vendas por dia (usa a janela da lista)
+    # Gráfico de vendas por dia
     day = ini_date
     sales_map = OrderedDict()
     while day <= fim_date:
@@ -252,6 +255,7 @@ def home(request):
         "dash_json": dash_json,
     }
     return render(request, "camisas/home.html", context)
+
 
 # ============================
 # EMPRESAS
@@ -544,6 +548,7 @@ def pedido_list(request):
         rows.append({
             "id": p.id,
             "numero_orcamento": p.numero_orcamento,
+            "data_entrega": p.data_entrega,   # 👈 incluído aqui
             "cliente_id": getattr(p.cliente, "id", None),
             "cliente": getattr(p.cliente, "nome", str(p.cliente)),
             "empresa": getattr(p.empresa, "nome_fantasia", ""),
@@ -572,11 +577,13 @@ def pedido_list(request):
     }
     return render(request, "camisas/pedido_list.html", ctx)
 
+
 @login_required
 def pedido_create(request):
-    # variações para JS (select + preço sugerido)
+    # variações p/ JS (agora com "tipo" e sem "tamanho")
     variacoes_qs = VariacaoProduto.objects.select_related("produto").values(
-        "id", "sku", "tamanho", "cor", "preco_sugerido", "produto__nome", "produto__empresa_id"
+        "id", "sku", "tipo", "preco_sugerido",
+        "produto__nome", "produto__empresa_id"
     )
     variacoes_json = json.dumps(list(variacoes_qs), default=str)
 
@@ -584,20 +591,99 @@ def pedido_create(request):
         form = PedidoForm(request.POST, request.FILES)
         pedido_fake = Pedido()
         formset = ItemFormSet(request.POST, instance=pedido_fake)
-        if form.is_valid() and formset.is_valid():
+
+        # Anexa PersonalizacaoItemFormSet em cada form do item (POST)
+        for idx, item_form in enumerate(formset.forms):
+            item_form.personalizacoes = PersonalizacaoItemFormSet(
+                request.POST,
+                prefix=f"personalizacoes-{idx}",
+                instance=item_form.instance,
+            )
+
+        all_p_valid = all(
+            getattr(f, "personalizacoes", None) and f.personalizacoes.is_valid()
+            for f in formset.forms
+        )
+
+        if form.is_valid() and formset.is_valid() and all_p_valid:
             pedido = form.save()
             formset.instance = pedido
-            formset.save()
+            itens = formset.save()
+
+            # salva personalizações já validadas
+            for idx, (item_form, item) in enumerate(zip(formset.forms, itens)):
+                pfs = PersonalizacaoItemFormSet(
+                    request.POST,
+                    prefix=f"personalizacoes-{idx}",
+                    instance=item
+                )
+                pfs.is_valid()
+                pfs.save()
+
             messages.success(request, "Pedido salvo com sucesso!")
             return redirect("camisas:pedido_detail", pedido.pk)
+
     else:
         form = PedidoForm()
         pedido_fake = Pedido()
         formset = ItemFormSet(instance=pedido_fake)
 
+        # Anexa PersonalizacaoItemFormSet em cada form do item (GET)
+        for idx, item_form in enumerate(formset.forms):
+            item_form.personalizacoes = PersonalizacaoItemFormSet(
+                prefix=f"personalizacoes-{idx}",
+                instance=item_form.instance
+            )
+
     return render(request, "camisas/pedido_form.html", {
-        "form": form, "formset": formset, "variacoes_json": variacoes_json, "is_edit": False
+        "form": form,
+        "formset": formset,
+        "variacoes_json": variacoes_json,
+        "is_edit": False
     })
+
+PersonalizacaoFormSet = inlineformset_factory(
+    parent_model=ItemPedido,
+    model=PersonalizacaoItem,
+    fields=[
+        "nome", "numero", "outra_info",
+        "tamanho_camisa", "quantidade",
+        "incluir_short", "tamanho_short",
+    ],
+    extra=1,
+    can_delete=True,
+)
+
+@require_http_methods(["GET", "POST"])
+def item_tamanhos_editar(request, item_id):
+    """
+    Edita os 'tamanhos' (PersonalizacaoItem) vinculados a um ItemPedido.
+    O botão na tela de detalhes aponta para esta view.
+    """
+    item = get_object_or_404(ItemPedido.objects.select_related("pedido", "variacao__produto"), pk=item_id)
+    pedido = item.pedido
+
+    formset = PersonalizacaoFormSet(
+        data=request.POST or None,
+        instance=item,
+        prefix="personalizacoes",
+    )
+
+    if request.method == "POST":
+        if formset.is_valid():
+            formset.save()
+            messages.success(request, f"Tamanhos do item #{item.id} atualizados com sucesso.")
+            return redirect("camisas:pedido_detail", pedido.pk)
+        else:
+            messages.error(request, "Corrija os erros abaixo para salvar os tamanhos.")
+
+    context = {
+        "pedido": pedido,
+        "item": item,
+        "formset": formset,
+    }
+    return render(request, "camisas/item_tamanhos_editar.html", context)
+
 
 @login_required
 def pedido_update(request, pk):
@@ -625,7 +711,10 @@ def pedido_update(request, pk):
 
 @login_required
 def pedido_detail(request, pk):
-    p = get_object_or_404(Pedido.objects.select_related("cliente", "empresa"), pk=pk)
+    p = get_object_or_404(
+        Pedido.objects.select_related("cliente", "empresa"),
+        pk=pk
+    )
 
     # Garante token único para pedidos antigos que ficaram sem token
     if not p.approval_token:
@@ -645,14 +734,27 @@ def pedido_detail(request, pk):
     total    = (subtotal - val_desc + val_acr).quantize(Decimal("0.01"))
 
     # Link público pronto para usar no template
-    approval_url = request.build_absolute_uri(reverse("camisas:orcamento_publico", args=[p.approval_token]))
+    approval_url = request.build_absolute_uri(
+        reverse("camisas:orcamento_publico", args=[p.approval_token])
+    )
+
+    # Pega a coleta e pessoas vinculadas
+    coleta_obj = p.coletas.last()
+    pessoas = coleta_obj.pessoas.all() if coleta_obj else []
 
     ctx = {
-        "pedido": p, "itens": itens,
-        "subtotal": subtotal, "val_desc": val_desc, "val_acr": val_acr, "total": total,
+        "pedido": p,
+        "itens": itens,
+        "subtotal": subtotal,
+        "val_desc": val_desc,
+        "val_acr": val_acr,
+        "total": total,
         "approval_url": approval_url,
+        "coleta": coleta_obj,
+        "pessoas": pessoas,
     }
     return render(request, "camisas/pedido_detail.html", ctx)
+
 
 
 from django.core.files.base import ContentFile  # se quiser salvar direto aqui (opcional)
@@ -2622,42 +2724,321 @@ from django.utils import timezone
 from .models import Pedido, ColetaPedido, VariacaoProduto
 from .forms import ColetaCreateForm
 
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, redirect, render
+from django.http import Http404
+from django.contrib import messages
+from django.utils import timezone
+from .models import Pedido, ColetaPedido, PessoaColeta
+from .forms import ColetaCreateForm
+
+
+def _sizes_for_pedido(pedido):
+    """
+    Sugere tamanhos com base no padrão do seu PersonalizacaoItem.
+    (Evita depender de 'variacao__tamanho', que pode não existir)
+    """
+    # chaves válidas no seu model:
+    padrao = [x[0] for x in PersonalizacaoItem.TAM_CAMISA]
+    # se quiser filtrar pelo(s) item(ns) do pedido no futuro, dá pra ajustar aqui
+    return padrao or ["PP", "P", "M", "G", "GG", "XG"]
+
+
+def _primeiro_item_do_pedido(pedido):
+    """
+    Retorna um ItemPedido para receber as personalizações.
+    Tenta via related_name comum; se não houver, faz fallback via query.
+    """
+    item = None
+    # tentativas comuns
+    for attr in ("itens", "itempedido_set"):
+        if hasattr(pedido, attr):
+            qs = getattr(pedido, attr).all()
+            item = qs.first()
+            if item:
+                return item
+    # fallback genérico
+    try:
+        from .models import ItemPedido
+        item = ItemPedido.objects.filter(pedido=pedido).first()
+    except Exception:
+        item = None
+    return item
+
+
+def aplicar_coleta_no_pedido(coleta):
+    """
+    Converte os registros de PessoaColeta da coleta concluída
+    para linhas agregadas em PersonalizacaoItem (com quantidade)
+    vinculadas ao 'primeiro' ItemPedido do Pedido.
+
+    Estratégia:
+    - agrupa por (nome, numero, tamanho)
+    - soma quantidades (1 por pessoa/tamanho na coleta atual)
+    - cria/atualiza PersonalizacaoItem no item alvo
+    """
+    pedido = coleta.pedido
+    item_alvo = _primeiro_item_do_pedido(pedido)
+    if not item_alvo:
+        return 0  # nada aplicado
+
+    # agrega quantidades por (nome, numero, tamanho)
+    bucket = {}
+    for p in coleta.pessoas.all():
+        key = (p.nome or "", p.numero or "", p.tamanho or "")
+        bucket[key] = bucket.get(key, 0) + 1
+
+    aplicadas = 0
+    for (nome, numero, tam), qtd in bucket.items():
+        if not (nome or numero or tam):
+            continue
+
+        # tenta encontrar uma personalização existente igual para somar
+        obj = PersonalizacaoItem.objects.filter(
+            item=item_alvo,
+            nome=nome or None,
+            numero=numero or None,
+            tamanho_camisa=tam or None,
+        ).first()
+
+        if obj:
+            # soma quantidades
+            obj.quantidade = (obj.quantidade or 0) + qtd
+            obj.save()
+        else:
+            PersonalizacaoItem.objects.create(
+                item=item_alvo,
+                nome=nome or None,
+                numero=numero or None,
+                outra_info=None,
+                tamanho_camisa=tam or None,
+                quantidade=qtd,
+                incluir_short=False,
+                tamanho_short=None,
+            )
+        aplicadas += 1
+
+    return aplicadas
+
+
+# ---------- Views ----------
+
 @login_required
 def coleta_criar(request, pedido_id):
-    pedido = get_object_or_404(Pedido.objects.select_related("empresa", "cliente"), pk=pedido_id)
-    if request.method == "POST":
-        form = ColetaCreateForm(request.POST)
-        if form.is_valid():
-            coleta = ColetaPedido.objects.create(
-                pedido=pedido,
-                modo=form.cleaned_data["modo"],
-                token=ColetaPedido.novo_token(),
-                expiracao=form.cleaned_data["expira_em"],
-            )
-            messages.success(request, "Link de coleta criado.")
-            return redirect("camisas:coleta_gerenciar", coleta_id=coleta.id)
-    else:
-        form = ColetaCreateForm()
+    pedido = get_object_or_404(
+        Pedido.objects.select_related("empresa", "cliente"),
+        pk=pedido_id
+    )
 
-    return render(request, "camisas/coleta_criar.html", {
-        "pedido": pedido, "form": form
-    })
+    if request.method == "POST":
+        # ----- 1) Lê e valida o MODO -----
+        modo_raw = (request.POST.get("modo") or "").strip().upper()
+        modos_validos = dict(ColetaPedido.MODOS).keys()
+        if modo_raw not in modos_validos:
+            modo = ColetaPedido.MODO_SIMPL
+            messages.warning(
+                request,
+                "Tipo de coleta inválido. Usando 'Quantidades por tamanho'."
+            )
+        else:
+            modo = modo_raw
+
+        # ----- 2) Lê expiração (opcional) -----
+        expiracao = None
+        expiracao_str = (request.POST.get("expiracao") or "").strip()
+        if expiracao_str:
+            try:
+                dt = datetime.strptime(expiracao_str, "%Y-%m-%dT%H:%M")
+                expiracao = timezone.make_aware(dt, timezone.get_current_timezone()) \
+                    if timezone.is_naive(dt) else dt
+            except Exception:
+                messages.warning(
+                    request,
+                    "Não foi possível ler a data de expiração; o link será criado sem expiração."
+                )
+
+        # ----- 3) Cria a coleta -----
+        coleta = ColetaPedido.objects.create(
+            pedido=pedido,
+            modo=modo,
+            token=ColetaPedido.novo_token(),
+            expiracao=expiracao,
+            # 🔹 opcional: já associar a um item específico
+            # item_id=request.POST.get("item_id") or None
+        )
+
+        modo_label = dict(ColetaPedido.MODOS).get(modo, modo)
+        messages.success(
+            request,
+            f"Link de coleta criado ({modo_label})."
+        )
+        return redirect("camisas:coleta_gerenciar", coleta_id=coleta.id)
+
+    # GET → renderiza o template
+    return render(
+        request,
+        "camisas/coleta_criar.html",
+        {
+            "pedido": pedido,
+            "default_modo": ColetaPedido.MODO_SIMPL,
+            "modos": ColetaPedido.MODOS,
+        }
+    )
+
+
+# --- PÚBLICO: preencher tamanhos no padrão PersonalizacaoItem ---
+@login_required
+def coleta_public(request, token):
+    coleta = (ColetaPedido.objects
+              .select_related("pedido", "pedido__empresa", "pedido__cliente")
+              .filter(token=token).first())
+    if not coleta:
+        raise Http404("Link inválido.")
+    if coleta.is_expirado:
+        return render(request, "camisas/coleta_public_bloqueada.html",
+                      {"coleta": coleta, "motivo": "expirada"})
+    if coleta.is_concluido and request.method == "GET":
+        return render(request, "camisas/coleta_public_sucesso.html", {"coleta": coleta})
+
+    pedido  = coleta.pedido
+    empresa = getattr(pedido, "empresa", None)
+    cliente = getattr(pedido, "cliente", None)
+
+    # 🔹 pega o item do pedido que receberá as personalizações
+    item_pedido = pedido.itens.first()  # aqui pode trocar por lógica mais específica
+
+    def gl(name1, name2=None):
+        lst = request.POST.getlist(name1)
+        if not lst and name2:
+            lst = request.POST.getlist(name2)
+        return lst
+
+    if request.method == "POST":
+        nome_cli = (request.POST.get("nome") or "").strip()
+        email = (request.POST.get("email") or "").strip()
+        obs = (request.POST.get("obs") or "").strip()
+
+        modo = coleta.modo
+        tem_valido = False
+
+        try:
+            if modo == ColetaPedido.MODO_SIMPL:
+                pares = []
+                for k, v in request.POST.items():
+                    if not k.startswith("q_"): 
+                        continue
+                    tam = k[2:].strip()
+                    q = int(v or "0")
+                    if tam and q > 0:
+                        pares.append((tam, q))
+
+                if not pares:
+                    sizes_simple = gl("sizes_simple[]")
+                    qtys_simple  = gl("qtys_simple[]")
+                    for i in range(max(len(sizes_simple), len(qtys_simple))):
+                        tam = (sizes_simple[i] if i < len(sizes_simple) else "").strip()
+                        q = int(qtys_simple[i] or "0")
+                        if tam and q > 0:
+                            pares.append((tam, q))
+
+                tem_valido = any(q > 0 for _, q in pares)
+                if not tem_valido:
+                    messages.error(request, "Informe ao menos uma linha com Tamanho e Quantidade maior que zero.")
+                    return render(request, "camisas/coleta_public.html",
+                                  {"coleta": coleta, "pedido": pedido, "empresa": empresa, "cliente": cliente})
+
+                for tam, q in pares:
+                    PersonalizacaoItem.objects.create(
+                        item=item_pedido,
+                        tamanho_camisa=tam,
+                        quantidade=q
+                    )
+
+            else:
+                nomes       = gl("pi_nome[]", "names[]")
+                numeros     = gl("pi_numero[]", "numbers[]")
+                outras      = gl("pi_outra_info[]", "others[]")
+                tamanhos    = gl("pi_tam_camisa[]", "sizes[]")
+                quantidades = gl("pi_qtd[]", "qtys[]")
+                tam_short   = gl("pi_tam_short[]", "short_sizes[]")
+                shorts_on   = gl("pi_incluir_short[]", "shorts[]")
+
+                n_rows = max(len(nomes), len(numeros), len(outras), len(tamanhos), len(quantidades))
+
+                for i in range(n_rows):
+                    n = (nomes[i] if i < len(nomes) else "").strip()
+                    num = (numeros[i] if i < len(numeros) else "").strip()
+                    outra = (outras[i] if i < len(outras) else "").strip()
+                    tam = (tamanhos[i] if i < len(tamanhos) else "").strip()
+                    qtd = int(quantidades[i] or "1") if i < len(quantidades) else 1
+
+                    if modo == ColetaPedido.MODO_NOMES and (not n or not tam):
+                        continue
+                    if modo == ColetaPedido.MODO_TIME and (not n or not tam or qtd <= 0):
+                        continue
+
+                    inc_short = False
+                    if i < len(tam_short) and tam_short[i]:
+                        inc_short = True
+                    elif i < len(shorts_on) and shorts_on[i] in ("on", "true", "1"):
+                        inc_short = True
+
+                    PersonalizacaoItem.objects.create(
+                        item=item_pedido,
+                        nome=n,
+                        numero=num if modo == ColetaPedido.MODO_TIME else "",
+                        outra_info=outra,
+                        tamanho_camisa=tam,
+                        quantidade=qtd,
+                        incluir_short=inc_short,
+                        tamanho_short=(tam_short[i] if inc_short and i < len(tam_short) else None)
+                    )
+
+                    tem_valido = True
+
+                if not tem_valido:
+                    messages.error(request, "Adicione ao menos uma linha válida.")
+                    return render(request, "camisas/coleta_public.html",
+                                  {"coleta": coleta, "pedido": pedido, "empresa": empresa, "cliente": cliente})
+
+            # 🔹 Atualiza coleta como concluída
+            coleta.cliente_nome  = nome_cli or getattr(cliente, "nome", "") or None
+            coleta.cliente_email = email or getattr(cliente, "email", "") or None
+            coleta.obs_cliente   = obs or None
+            coleta.concluido_em  = timezone.now()
+            coleta.save()
+
+            return render(request, "camisas/coleta_public_sucesso.html", {"coleta": coleta})
+
+        except Exception as e:
+            messages.error(request, f"Houve um erro: {e}")
+            return render(request, "camisas/coleta_public.html",
+                          {"coleta": coleta, "pedido": pedido, "empresa": empresa, "cliente": cliente})
+
+    return render(request, "camisas/coleta_public.html",
+                  {"coleta": coleta, "pedido": pedido, "empresa": empresa, "cliente": cliente})
 
 
 @login_required
 def coleta_gerenciar(request, coleta_id):
-    coleta = get_object_or_404(ColetaPedido.objects.select_related("pedido", "pedido__empresa", "pedido__cliente"), pk=coleta_id)
+    coleta = get_object_or_404(
+        ColetaPedido.objects.select_related("pedido", "pedido__empresa", "pedido__cliente"),
+        pk=coleta_id
+    )
     pedido = coleta.pedido
-    # link público completo
-    public_path = coleta.public_path
+
+    public_path = coleta.public_path  # ex.: reverse('camisas:coleta_public', kwargs={'token': coleta.token})
     full_url = f"{request.scheme}://{request.get_host()}{public_path}"
 
-    # WhatsApp CTA
-    msg = (
-        f"Olá, segue o link para informar os tamanhos da sua encomenda "
-        f"(Pedido #{pedido.pk}): {full_url}"
-    )
-    wa_link = f"https://wa.me/?text={msg.replace(' ', '%20')}"
+    # Texto do WhatsApp
+    wa_text = f"Olá, segue o link para informar os tamanhos da sua encomenda (Pedido #{pedido.pk}): {full_url}"
+
+    # 2 formas equivalentes (use UMA)
+    # Forma A: quote_plus
+    wa_link = f"https://wa.me/?text={quote_plus(wa_text)}"
+
+    # Forma B: urlencode
+    # wa_link = "https://wa.me/?" + urlencode({"text": wa_text})
 
     return render(request, "camisas/coleta_gerenciar.html", {
         "coleta": coleta,
@@ -2669,107 +3050,8 @@ def coleta_gerenciar(request, coleta_id):
     })
 
 
-def _sizes_for_pedido(pedido):
-    """
-    Tamanhos sugeridos com base nas variações presentes nos itens do pedido.
-    Fallback para ['PP','P','M','G','GG','XG'] se não achar nada.
-    """
-    # se você tem ItemPedido com FK para VariacaoProduto, carregue os tamanhos únicos:
-    try:
-        from .models import ItemPedido
-        qs = ItemPedido.objects.filter(pedido=pedido).values_list("variacao__tamanho", flat=True)
-        sizes = [s for s in sorted(set(qs)) if s]
-    except Exception:
-        sizes = []
-    if not sizes:
-        sizes = ["PP","P","M","G","GG","XG"]
-    return sizes
 
-
-def coleta_public(request, token):
-    coleta = ColetaPedido.objects.select_related("pedido", "pedido__empresa", "pedido__cliente").filter(token=token).first()
-    if not coleta:
-        raise Http404("Link inválido.")
-    if coleta.is_expirado:
-        return render(request, "camisas/coleta_public_bloqueada.html", {"coleta": coleta, "motivo": "expirada"})
-    if coleta.is_concluido and request.method == "GET":
-        # já concluída — apenas mostrar recibo
-        return render(request, "camisas/coleta_public_sucesso.html", {"coleta": coleta})
-
-    pedido  = coleta.pedido
-    empresa = getattr(pedido, "empresa", None)
-    cliente = getattr(pedido, "cliente", None)
-    tamanhos = _sizes_for_pedido(pedido)
-
-    if request.method == "POST":
-        modo = coleta.modo
-        nome  = (request.POST.get("nome") or "").strip()
-        email = (request.POST.get("email") or "").strip()
-        obs   = (request.POST.get("obs") or "").strip()
-
-        payload = {}
-        try:
-            if modo == ColetaPedido.MODO_SIMPL:
-                # campos q_<TAM> ex.: q_P, q_M...
-                linhas = []
-                total = 0
-                for t in tamanhos:
-                    key = f"q_{t}"
-                    q = int(request.POST.get(key) or "0")
-                    if q < 0: q = 0
-                    if q:
-                        linhas.append({"tamanho": t, "qtd": q})
-                        total += q
-                payload = {"tipo": "SIMPLES", "tamanhos": linhas, "total": total}
-
-            elif modo == ColetaPedido.MODO_NOMES:
-                # tabela dinâmica names[] numbers[] sizes[]
-                nomes   = request.POST.getlist("names[]")
-                nums    = request.POST.getlist("numbers[]")
-                sizes   = request.POST.getlist("sizes[]")
-                linhas = []
-                for i in range(len(nomes)):
-                    n = (nomes[i] or "").strip()
-                    if not n:  # ignore linha vazia
-                        continue
-                    numero = (nums[i] or "").strip()
-                    tam = (sizes[i] or "").strip()
-                    linhas.append({"nome": n, "numero": numero, "tamanho": tam})
-                payload = {"tipo": "NOMES", "pessoas": linhas, "total": len(linhas)}
-
-            else:  # TIME
-                nomes = request.POST.getlist("names[]")
-                nums  = request.POST.getlist("numbers[]")
-                sizes = request.POST.getlist("sizes[]")
-                linhas = []
-                for i in range(len(nomes)):
-                    n = (nomes[i] or "").strip()
-                    num = (nums[i] or "").strip()
-                    tam = (sizes[i] or "").strip()
-                    if not n and not num:
-                        continue
-                    linhas.append({"nome": n, "numero": num, "tamanho": tam})
-                payload = {"tipo": "TIME", "jogadores": linhas, "total": len(linhas)}
-
-        except Exception:
-            messages.error(request, "Houve um erro ao processar seus dados. Tente novamente.")
-            return render(request, "camisas/coleta_public.html", {
-                "coleta": coleta, "pedido": pedido, "empresa": empresa, "cliente": cliente, "tamanhos": tamanhos
-            })
-
-        # salva
-        coleta.cliente_nome  = nome or getattr(cliente, "nome", "") or None
-        coleta.cliente_email = email or getattr(cliente, "email", "") or None
-        coleta.obs_cliente   = obs or None
-        coleta.payload       = payload
-        coleta.concluido_em  = timezone.now()
-        coleta.save()
-
-        return render(request, "camisas/coleta_public_sucesso.html", {"coleta": coleta})
-
-    return render(request, "camisas/coleta_public.html", {
-        "coleta": coleta, "pedido": pedido, "empresa": empresa, "cliente": cliente, "tamanhos": tamanhos
-    })
+from urllib.parse import quote_plus, urlencode
 
 from django.contrib import messages
 from django.shortcuts import redirect
@@ -2807,3 +3089,65 @@ def pedido_alterar_cliente(request, pk):
     pedido.save(update_fields=["cliente"])
     messages.success(request, f"Cliente do pedido #{pedido.id} alterado para {cliente.nome}.")
     return redirect(next_url)
+
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+
+@login_required
+def pessoa_coleta_edit(request, coleta_id, pessoa_id):
+    coleta = get_object_or_404(ColetaPedido, pk=coleta_id)
+    pessoa = get_object_or_404(PessoaColeta, pk=pessoa_id, coleta=coleta)
+
+    if request.method == "POST":
+        form = PessoaColetaForm(request.POST, instance=pessoa)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Pessoa da coleta atualizada com sucesso!")
+            return redirect("camisas:coleta_gerenciar", coleta_id=coleta.id)
+        else:
+            messages.error(request, "Corrija os erros abaixo.")
+    else:
+        form = PessoaColetaForm(instance=pessoa)
+
+    return render(request, "camisas/pessoa_coleta_edit.html", {
+        "form": form,
+        "coleta": coleta,
+        "pessoa": pessoa,
+    })
+
+@login_required
+def pessoa_coleta_pagamento(request, coleta_id, pessoa_id):
+    coleta = get_object_or_404(ColetaPedido, pk=coleta_id)
+    pessoa = get_object_or_404(PessoaColeta, pk=pessoa_id, coleta=coleta)
+
+    if request.method == "POST":
+        valor = request.POST.get("valor")
+        if valor:
+            pessoa.valor = Decimal(valor.replace(",", "."))
+        pessoa.status_pagamento = "pago"
+        pessoa.pago_em = timezone.now()
+        pessoa.save()
+        messages.success(request, f"Pagamento registrado para {pessoa.nome}.")
+        return redirect("camisas:pedido_detail", pk=coleta.pedido.pk)
+
+    return render(request, "camisas/pessoa_coleta_pagamento.html", {"pessoa": pessoa, "coleta": coleta})
+
+@login_required
+def pessoa_coleta_add(request, coleta_id):
+    coleta = get_object_or_404(ColetaPedido, pk=coleta_id)
+    if request.method == "POST":
+        form = PessoaColetaForm(request.POST)
+        if form.is_valid():
+            pessoa = form.save(commit=False)
+            pessoa.coleta = coleta
+            pessoa.save()
+            messages.success(request, f"Pessoa {pessoa.nome} adicionada com sucesso.")
+            return redirect("camisas:coleta_gerenciar", coleta_id=coleta.id)
+    else:
+        form = PessoaColetaForm()
+
+    return render(request, "camisas/pessoa_coleta_form.html", {
+        "form": form,
+        "coleta": coleta,
+        "pedido": coleta.pedido,
+    })

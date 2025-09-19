@@ -18,26 +18,6 @@ from django.db.models.fields.files import FieldFile
 from django.utils.safestring import mark_safe
 from django.utils import timezone
 
-# --- Storage dinâmico: Cloudinary em produção, local em dev ---
-import os
-try:
-    from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
-    _CLOUDINARY_URL = os.getenv("CLOUDINARY_URL", "")
-    USE_CLOUDINARY = bool(_CLOUDINARY_URL)
-except Exception:
-    USE_CLOUDINARY = False
-    MediaCloudinaryStorage = None
-    RawMediaCloudinaryStorage = None
-
-if USE_CLOUDINARY:
-    IMAGE_STORAGE = MediaCloudinaryStorage()     # imagens (png, jpg, etc.)
-    FILE_STORAGE  = RawMediaCloudinaryStorage()  # arquivos “raw” (pdf, txt, etc.)
-else:
-    # fallback local (dev)
-    from django.core.files.storage import FileSystemStorage
-    IMAGE_STORAGE = FileSystemStorage()
-    FILE_STORAGE  = FileSystemStorage()
-
 # =========================
 # Helpers de upload / número
 # =========================
@@ -113,7 +93,7 @@ class Empresa(models.Model):
     endereco = models.CharField(max_length=180, blank=True, null=True)
     cidade = models.CharField(max_length=80, blank=True, null=True)
     uf = models.CharField(max_length=2, blank=True, null=True)
-    logo = models.ImageField(upload_to=logo_upload_to, blank=True, null=True, storage=IMAGE_STORAGE)
+    logo = models.ImageField(upload_to=logo_upload_to, blank=True, null=True)
 
     class Meta:
         ordering = ("nome_fantasia",)
@@ -256,44 +236,57 @@ class Produto(models.Model):
     def __str__(self) -> str:
         return self.nome
 
-    def ensure_variacoes_para_tamanhos(self, tamanhos=None, cores=None, preco_sugerido: Decimal = Decimal("0.00")) -> int:
+    def ensure_variacoes_para_tipos(self, tipos=None, preco_sugerido: Decimal = Decimal("0.00")) -> int:
         """
-        Garante variações para todos os tamanhos (e cores) informados.
+        Garante variações para todos os tipos informados.
         Retorna quantas variações foram criadas.
         """
-        tamanhos = tamanhos or SIZE_ORDER
-        cores = cores or ["Branco"]
+        tipos = tipos or ["Padrão"]
         created = 0
-        for cor in cores:
-            for tam in tamanhos:
-                if not self.variacoes.filter(tamanho=tam, cor=cor).exists():
-                    base = f"{self.pk}-{tam}-{cor}".upper().replace(" ", "")
-                    sku = base
-                    n = 1
-                    while VariacaoProduto.objects.filter(sku=sku).exists():
-                        n += 1
-                        sku = f"{base}-{n}"
-                    VariacaoProduto.objects.create(
-                        produto=self, tamanho=tam, cor=cor, sku=sku, preco_sugerido=preco_sugerido
-                    )
-                    created += 1
+        for tipo in tipos:
+            if not self.variacoes.filter(tipo=tipo).exists():
+                base = f"{self.pk}-{tipo}".upper().replace(" ", "")
+                sku = base
+                n = 1
+                while VariacaoProduto.objects.filter(sku=sku).exists():
+                    n += 1
+                    sku = f"{base}-{n}"
+                VariacaoProduto.objects.create(
+                    produto=self,
+                    tipo=tipo,
+                    sku=sku,
+                    preco_sugerido=preco_sugerido
+                )
+                created += 1
         return created
 
 
+
 class VariacaoProduto(models.Model):
-    produto = models.ForeignKey(Produto, on_delete=models.CASCADE, related_name="variacoes")
-    tamanho = models.CharField(max_length=10)
-    cor = models.CharField(max_length=40, default="Branco")
-    sku = models.CharField(max_length=40, unique=True, blank=True, editable=False, db_index=True)
+    produto = models.ForeignKey(
+        "Produto",
+        on_delete=models.CASCADE,
+        related_name="variacoes"
+    )
+    tipo = models.CharField(max_length=40, default="Padrão")  # <-- substitui cor por tipo
+    sku = models.CharField(
+        max_length=40,
+        unique=True,
+        blank=True,
+        editable=False,
+        db_index=True
+    )
     estoque_atual = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
     custo_unitario = models.DecimalField(max_digits=12, decimal_places=4, default=Decimal("0"))
     preco_sugerido = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
 
     class Meta:
-        unique_together = ("produto", "tamanho", "cor")
+        unique_together = ("produto", "tipo")  # <-- atualizado
+        verbose_name = "Variação de Produto"
+        verbose_name_plural = "Variações de Produtos"
 
     def __str__(self) -> str:
-        return f"{self.produto.nome} {self.tamanho}/{self.cor}"
+        return f"{self.produto.nome} / {self.tipo}"
 
     # ---- helpers p/ SKU ----
     @staticmethod
@@ -303,9 +296,8 @@ class VariacaoProduto(models.Model):
 
     def _sku_base(self) -> str:
         prod = self._code(getattr(self.produto, "nome", "PROD"))[:8]
-        tam = self._code(self.tamanho)
-        cor = self._code(self.cor)
-        base = f"{self.produto_id or 'X'}-{prod}-{tam}-{cor}".strip("-")
+        tipo = self._code(self.tipo)
+        base = f"{self.produto_id or 'X'}-{prod}-{tipo}".strip("-")
         return base[:36]  # deixa espaço para sufixo -N
 
     def _generate_unique_sku(self) -> str:
@@ -319,13 +311,11 @@ class VariacaoProduto(models.Model):
         return sku
 
     def save(self, *args, **kwargs):
-        # Gera ao criar/editar se estiver vazio
         if not self.sku:
-            # Se ainda não tem produto_id (raríssimo), salva uma vez para ganhar id
             if not self.produto_id and self.produto and not self.produto.pk:
                 self.produto.save()
             if not self.produto_id:
-                super().save(*args, **kwargs)  # salva para ter PK
+                super().save(*args, **kwargs)
             self.sku = self._generate_unique_sku()
         super().save(*args, **kwargs)
 
@@ -414,6 +404,7 @@ class Pedido(models.Model):
     observacao = models.TextField(blank=True, null=True)
     desconto_percentual = models.DecimalField(max_digits=7, decimal_places=2, default=Decimal("0.00"))
     acrescimo_percentual = models.DecimalField(max_digits=7, decimal_places=2, default=Decimal("0.00"))
+    data_entrega = models.DateField(blank=True, null=True, verbose_name="Data de entrega")
 
     # >>> NOVO: controla se o orçamento deve ocultar totais/subtotais <<<
     orcamento_ocultar_total = models.BooleanField(
@@ -425,8 +416,7 @@ class Pedido(models.Model):
     numero_orcamento = models.CharField(max_length=40, blank=True, null=True)
     validade = models.DateField(blank=True, null=True)
     condicoes = models.TextField(blank=True, null=True)
-    arte = SafeImageField(upload_to=arte_upload_to, blank=True, null=True, storage=IMAGE_STORAGE)
-
+    arte = SafeImageField(upload_to=arte_upload_to, blank=True, null=True)
 
     # aprovação pública (ORÇAMENTO)
     APPROVAL_CHOICES = (("PEND", "Pendente"), ("APRV", "Aprovado"), ("REJ", "Recusado"))
@@ -681,26 +671,116 @@ class Pedido(models.Model):
     def should_hide_total(self) -> bool:
         return bool(self.orcamento_ocultar_total)
 
-
-
 class ItemPedido(models.Model):
-    pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name="itens")
-    variacao = models.ForeignKey(VariacaoProduto, on_delete=models.PROTECT)
-    quantidade = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))])
-    preco_unitario = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0.00"))])
+    pedido = models.ForeignKey("Pedido", on_delete=models.CASCADE, related_name="itens")
+    variacao = models.ForeignKey("VariacaoProduto", on_delete=models.PROTECT)
+    quantidade = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))]
+    )
+    preco_unitario = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))]
+    )
+
+    # === NOVOS CAMPOS PARA OPCIONAIS ===
+    nome_personalizado = models.CharField(
+        max_length=120,
+        blank=True,
+        null=True,
+        help_text="Nome impresso na camisa (opcional)"
+    )
+    numero_camisa = models.CharField(
+        max_length=10,
+        blank=True,
+        null=True,
+        help_text="Número da camisa (opcional)"
+    )
+    outra_info = models.CharField(
+        max_length=120,
+        blank=True,
+        null=True,
+        help_text="Outra informação a ser adicionada (opcional)"
+    )
+    incluir_short = models.BooleanField(
+        default=False,
+        help_text="Marque se o pedido inclui short"
+    )
+    tamanho_short = models.CharField(
+        max_length=10,
+        blank=True,
+        null=True,
+        help_text="Tamanho do short (se incluído)"
+    )
 
     def subtotal(self) -> Decimal:
         return (self.preco_unitario * self.quantidade).quantize(Decimal("0.01"))
 
     def save(self, *args, **kwargs):
+        # Se não informar preço, puxa o sugerido da variação
         if (self.preco_unitario is None or self.preco_unitario == 0) and self.variacao_id:
             self.preco_unitario = self.variacao.preco_sugerido or Decimal("0.00")
         super().save(*args, **kwargs)
 
+    def __str__(self):
+        extras = []
+        if self.nome_personalizado:
+            extras.append(f"Nome: {self.nome_personalizado}")
+        if self.numero_camisa:
+            extras.append(f"Nº {self.numero_camisa}")
+        if self.incluir_short:
+            extras.append(f"Short {self.tamanho_short or ''}")
+        extras_txt = f" ({', '.join(extras)})" if extras else ""
+        return f"{self.variacao} x{self.quantidade}{extras_txt}"
+    
+# camisas/models.py
 
-# =========================
-# Remessas / Costureiras
-# =========================
+class PersonalizacaoItem(models.Model):
+    TAM_CAMISA = [
+        ("PP", "PP"),
+        ("P", "P"),
+        ("M", "M"),
+        ("G", "G"),
+        ("GG", "GG"),
+        ("XG", "XG"),
+        ("PP-BL", "PP Baby Look"),
+        ("P-BL", "P Baby Look"),
+        ("M-BL", "M Baby Look"),
+        ("G-BL", "G Baby Look"),
+        ("GG-BL", "GG Baby Look"),
+        ("XG-BL", "XG Baby Look"),
+    ]
+
+    TAM_SHORT = [
+        ("P", "P"),
+        ("M", "M"),
+        ("G", "G"),
+        ("GG", "GG"),
+    ]
+
+    item = models.ForeignKey(
+        "ItemPedido",
+        related_name="personalizacoes",
+        on_delete=models.CASCADE
+    )
+    nome = models.CharField(max_length=100, blank=True, null=True)
+    numero = models.CharField(max_length=10, blank=True, null=True)
+    outra_info = models.CharField(max_length=200, blank=True, null=True)
+    tamanho_camisa = models.CharField(max_length=10, choices=TAM_CAMISA, blank=True, null=True)
+
+    # 🔹 Novo campo
+    quantidade = models.PositiveIntegerField(default=1)
+
+    incluir_short = models.BooleanField(default=False)
+    tamanho_short = models.CharField(max_length=10, choices=TAM_SHORT, blank=True, null=True)
+
+    def __str__(self):
+        qtd = f"x{self.quantidade}" if self.quantidade else ""
+        return f"{self.nome or ''} {self.numero or ''} {self.tamanho_camisa or ''} {qtd}".strip()
+
+
 class Costureira(models.Model):
     nome = models.CharField(max_length=120)
     telefone = models.CharField(max_length=40, blank=True, null=True)
@@ -1062,8 +1142,7 @@ class Despesa(models.Model):
 
     observacao = models.TextField(blank=True, null=True)
     # anexo (nota/recibo). Usamos FileField normal + helpers "safe"
-    anexo = models.FileField(upload_to="despesas/%Y/%m", blank=True, null=True, storage=FILE_STORAGE)
-
+    anexo = models.FileField(upload_to="despesas/%Y/%m", blank=True, null=True)
 
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -1348,7 +1427,19 @@ class ColetaPedido(models.Model):
         (MODO_TIME,  "Time (nome + número + tamanho)"),
     ]
 
-    pedido   = models.ForeignKey("camisas.Pedido", on_delete=models.CASCADE, related_name="coletas")
+    pedido   = models.ForeignKey(
+        "camisas.Pedido",
+        on_delete=models.CASCADE,
+        related_name="coletas"
+    )
+    # 🔹 agora cada coleta sabe qual item de pedido ela está personalizando
+    item     = models.ForeignKey(
+        "camisas.ItemPedido",
+        on_delete=models.PROTECT,
+        related_name="coletas",
+        null=True, blank=True
+    )
+
     modo     = models.CharField(max_length=12, choices=MODOS, default=MODO_SIMPL)
     token    = models.CharField(max_length=40, unique=True, db_index=True)
     expiracao     = models.DateTimeField(blank=True, null=True)
@@ -1382,3 +1473,21 @@ class ColetaPedido(models.Model):
     def public_path(self) -> str:
         from django.urls import reverse
         return reverse("camisas:coleta_public", kwargs={"token": self.token})
+
+class PessoaColeta(models.Model):
+    coleta = models.ForeignKey(ColetaPedido, on_delete=models.CASCADE, related_name="pessoas")
+    nome = models.CharField(max_length=120)
+    numero = models.CharField(max_length=10, blank=True, null=True)  # camisa com número (opcional)
+    tamanho = models.CharField(max_length=10, blank=True, null=True)
+    
+    # Pagamento
+    valor = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    status_pagamento = models.CharField(
+        max_length=10,
+        choices=[("pendente", "Pendente"), ("pago", "Pago")],
+        default="pendente"
+    )
+    pago_em = models.DateTimeField(blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.nome} ({self.tamanho}) - {self.get_status_pagamento_display()}"
