@@ -17,6 +17,7 @@ from django.db.models import IntegerField, Case, When  # ordenação de tamanhos
 from django.db.models.fields.files import FieldFile
 from django.utils.safestring import mark_safe
 from django.utils import timezone
+from cloudinary.models import CloudinaryField
 
 # =========================
 # Helpers de upload / número
@@ -93,7 +94,7 @@ class Empresa(models.Model):
     endereco = models.CharField(max_length=180, blank=True, null=True)
     cidade = models.CharField(max_length=80, blank=True, null=True)
     uf = models.CharField(max_length=2, blank=True, null=True)
-    logo = models.ImageField(upload_to=logo_upload_to, blank=True, null=True)
+    logo = CloudinaryField("logo", blank=True, null=True)
 
     class Meta:
         ordering = ("nome_fantasia",)
@@ -416,7 +417,7 @@ class Pedido(models.Model):
     numero_orcamento = models.CharField(max_length=40, blank=True, null=True)
     validade = models.DateField(blank=True, null=True)
     condicoes = models.TextField(blank=True, null=True)
-    arte = SafeImageField(upload_to=arte_upload_to, blank=True, null=True)
+    arte = CloudinaryField("imagem", blank=True, null=True)
 
     # aprovação pública (ORÇAMENTO)
     APPROVAL_CHOICES = (("PEND", "Pendente"), ("APRV", "Aprovado"), ("REJ", "Recusado"))
