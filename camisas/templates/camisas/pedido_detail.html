@@ -176,14 +176,15 @@
           </div>
         </div>
 
-        {% if pedido.arte_has_file %}
-          <div class="mb-3 text-center">
-            <img src="{{ pedido.arte_url_safe }}" alt="Arte do pedido"
-                 style="max-width:100%;height:auto;border-radius:.6rem;border:1px solid #e5e7eb;">
-          </div>
-        {% else %}
-          <div class="mb-3 text-center text-muted">Nenhuma arte anexada.</div>
-        {% endif %}
+{% if pedido.arte %}
+  <div class="mb-3 text-center">
+    <img src="{{ pedido.arte.url }}" alt="Arte do pedido"
+         style="max-width:100%;height:auto;border-radius:.6rem;border:1px solid #e5e7eb;">
+  </div>
+{% else %}
+  <div class="mb-3 text-center text-muted">Nenhuma arte anexada.</div>
+{% endif %}
+
 
         <form class="d-flex gap-2 align-items-center" method="post"
               enctype="multipart/form-data"
