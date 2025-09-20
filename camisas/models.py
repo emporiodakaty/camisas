@@ -417,7 +417,8 @@ class Pedido(models.Model):
     numero_orcamento = models.CharField(max_length=40, blank=True, null=True)
     validade = models.DateField(blank=True, null=True)
     condicoes = models.TextField(blank=True, null=True)
-    arte = CloudinaryField("imagem", blank=True, null=True)
+    arte = SafeImageField(upload_to=arte_upload_to, blank=True, null=True)
+
 
     # aprovação pública (ORÇAMENTO)
     APPROVAL_CHOICES = (("PEND", "Pendente"), ("APRV", "Aprovado"), ("REJ", "Recusado"))
