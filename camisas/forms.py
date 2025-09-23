@@ -237,6 +237,7 @@ from django.forms import inlineformset_factory
 from .models import ItemPedido, PersonalizacaoItem
 
 # camisas/forms.py
+# camisas/forms.py
 class PersonalizacaoItemForm(forms.ModelForm):
     class Meta:
         model = PersonalizacaoItem
@@ -245,7 +246,7 @@ class PersonalizacaoItemForm(forms.ModelForm):
             "numero",
             "outra_info",
             "tamanho_camisa",
-            "quantidade",        # 🔹 incluído
+            "quantidade",
             "incluir_short",
             "tamanho_short",
         ]
@@ -254,11 +255,15 @@ class PersonalizacaoItemForm(forms.ModelForm):
             "quantidade": forms.NumberInput(attrs={
                 "class": "form-control form-control-sm",
                 "min": "1",
-                "step": "1"
+                "step": "1",
             }),
             "tamanho_short": forms.Select(attrs={"class": "form-select form-select-sm"}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 🔹 garante que o campo não será obrigatório
+        self.fields["quantidade"].required = False
 
 
 PersonalizacaoItemFormSet = inlineformset_factory(
