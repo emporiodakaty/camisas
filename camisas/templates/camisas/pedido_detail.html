@@ -270,6 +270,28 @@
       </div>
     </div>
   </div>
+  <!-- Kanban de Produção -->
+  <div class="card p-3 bg-white mb-3">
+    <h2 class="h6 mb-3">Fluxo de Produção</h2>
+    <div class="d-flex flex-wrap gap-2">
+
+      {% for key, label in ETAPAS %}
+        <div class="p-2 rounded
+          {% if pedido.etapa_producao == key %}
+            bg-primary text-white fw-bold
+          {% else %}
+            bg-light text-muted
+          {% endif %}">
+          {{ label }}
+          {% if pedido.etapa_producao != key %}
+            <a href="{% url 'camisas:mudar_etapa_pedido' pedido.pk key %}"
+               class="btn btn-sm btn-outline-dark d-block mt-1">Mover</a>
+          {% endif %}
+        </div>
+      {% endfor %}
+
+    </div>
+  </div>
 
   <!-- Itens e totais -->
   <div class="card p-3 bg-white">

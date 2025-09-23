@@ -50,6 +50,8 @@ urlpatterns = [
     path("pedido/<int:pk>/reabrir-orcamento/", views.pedido_reabrir_orcamento, name="pedido_reabrir_orcamento"),
     path("pedidos/<int:pk>/excluir/", views.pedido_delete, name="pedido_delete"),
 
+    path("kanban/", views.kanban_pedidos, name="kanban"),
+    path("kanban/mudar/<int:pk>/<str:etapa>/", views.mudar_etapa_pedido, name="mudar_etapa_pedido"),
     # Remessas (Terceirização)
     path("remessas/", views.remessa_list, name="remessa_list"),
     path("remessas/nova/", views.remessa_create, name="remessa_create"),

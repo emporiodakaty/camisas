@@ -390,6 +390,7 @@ import hashlib
 # ... seus outros imports (Empresa, Cliente, SafeImageField, gen_approval_token, gerar_numero_orcamento, arte_upload_to, etc.)
 
 class Pedido(models.Model):
+    # ===== STATUS COMERCIAL (venda/faturamento) =====
     STATUS = (
         ("ORC", "Orçamento"),
         ("PEN", "Pendente"),
@@ -398,29 +399,45 @@ class Pedido(models.Model):
         ("CANC", "Cancelado"),
     )
 
-    empresa = models.ForeignKey('Empresa', on_delete=models.PROTECT, related_name="pedidos")
-    cliente = models.ForeignKey('Cliente', on_delete=models.PROTECT, related_name="pedidos")
+    # ===== NOVO: ETAPA DO KANBAN =====
+    ETAPA_PRODUCAO = [
+        ("ARTE", "Arte"),
+        ("IMPRESSAO", "Impressão"),
+        ("ESTAMPAGEM", "Estampagem"),
+        ("ACABAMENTO", "Acabamento"),
+        ("QUALIDADE", "Qualidade"),
+        ("ENTREGA", "Entrega"),
+    ]
+
+    empresa = models.ForeignKey("Empresa", on_delete=models.PROTECT, related_name="pedidos")
+    cliente = models.ForeignKey("Cliente", on_delete=models.PROTECT, related_name="pedidos")
     criado_em = models.DateTimeField(default=timezone.now)
+
     status = models.CharField(max_length=4, choices=STATUS, default="ORC")
+    etapa_producao = models.CharField(
+        max_length=20,
+        choices=ETAPA_PRODUCAO,
+        default="ARTE",
+        db_index=True,
+        help_text="Etapa atual no fluxo de produção (Kanban)."
+    )
+
     observacao = models.TextField(blank=True, null=True)
     desconto_percentual = models.DecimalField(max_digits=7, decimal_places=2, default=Decimal("0.00"))
     acrescimo_percentual = models.DecimalField(max_digits=7, decimal_places=2, default=Decimal("0.00"))
     data_entrega = models.DateField(blank=True, null=True, verbose_name="Data de entrega")
 
-    # >>> NOVO: controla se o orçamento deve ocultar totais/subtotais <<<
+    # >>> orçamentos
     orcamento_ocultar_total = models.BooleanField(
         default=False,
         help_text="Se marcado, esconde o bloco de totais e a coluna Subtotal no orçamento."
     )
-
-    # orçamento
     numero_orcamento = models.CharField(max_length=40, blank=True, null=True)
     validade = models.DateField(blank=True, null=True)
     condicoes = models.TextField(blank=True, null=True)
     arte = CloudinaryField("arte", blank=True, null=True)
 
-
-    # aprovação pública (ORÇAMENTO)
+    # ===== Aprovação de orçamento =====
     APPROVAL_CHOICES = (("PEND", "Pendente"), ("APRV", "Aprovado"), ("REJ", "Recusado"))
     approval_token = models.CharField(max_length=64, unique=True, db_index=True, default=gen_approval_token, editable=False)
     approval_status = models.CharField(max_length=4, choices=APPROVAL_CHOICES, default="PEND")
@@ -435,7 +452,7 @@ class Pedido(models.Model):
     approval_timezone = models.CharField(max_length=64, blank=True, default="")
     approval_hash = models.CharField(max_length=64, blank=True, default="")
 
-    # ====== Aprovação pública da ARTE (independente do orçamento) ======
+    # ===== Aprovação da arte =====
     ART_CHOICES = (("PEND", "Pendente"), ("APRV", "Aprovado"), ("REJ", "Recusado"))
     artwork_token = models.CharField(max_length=64, unique=True, db_index=True, default=gen_approval_token, editable=False)
     artwork_status = models.CharField(max_length=4, choices=ART_CHOICES, default="PEND")
@@ -450,7 +467,7 @@ class Pedido(models.Model):
     artwork_timezone = models.CharField(max_length=64, blank=True, default="")
     artwork_hash = models.CharField(max_length=64, blank=True, default="")
 
-    # ---------- totais ----------
+    # ---------- Totais ----------
     def total_bruto(self) -> Decimal:
         return sum((i.preco_unitario * i.quantidade) for i in self.itens.all()) or Decimal("0.00")
 
@@ -462,7 +479,7 @@ class Pedido(models.Model):
             total *= (Decimal("1") - self.desconto_percentual / Decimal("100"))
         return total.quantize(Decimal("0.01"))
 
-    # ---------- PAGAMENTOS ----------
+    # ---------- Pagamentos ----------
     @property
     def total_pago(self) -> Decimal:
         return sum((p.valor for p in self.pagamentos.all()), Decimal("0.00"))
@@ -477,6 +494,7 @@ class Pedido(models.Model):
             return  # evita duplicar
 
         sinal = (self.total_com_descontos() * Decimal("0.5")).quantize(Decimal("0.01"))
+        from .models import Pagamento
         Pagamento.objects.create(
             pedido=self,
             valor=sinal,
@@ -491,6 +509,7 @@ class Pedido(models.Model):
         saldo = self.saldo_restante
         if saldo <= 0:
             return
+        from .models import Pagamento
         Pagamento.objects.create(
             pedido=self,
             valor=saldo,
@@ -500,7 +519,7 @@ class Pedido(models.Model):
         self.status = "FAT"
         self.save(update_fields=["status"])
 
-    # ---------- utilidades ----------
+    # ---------- Utilidades ----------
     def save(self, *args, **kwargs):
         if (self.status == "ORC") and not self.numero_orcamento:
             self.numero_orcamento = gerar_numero_orcamento()

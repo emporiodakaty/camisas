@@ -709,6 +709,21 @@ def pedido_update(request, pk):
         "form": form, "formset": formset, "variacoes_json": variacoes_json, "is_edit": True
     })
 
+from decimal import Decimal
+from django.contrib.auth.decorators import login_required
+from django.db.models import Sum
+from django.db.models.functions import Coalesce
+from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
+
+from .models import Pedido
+from .utils import gen_approval_token  # ajuste o import conforme sua estrutura
+from decimal import Decimal
+from django.db.models import F, Sum
+from django.db.models.functions import Coalesce
+  # ajuste conforme seu projeto
+
+
 @login_required
 def pedido_detail(request, pk):
     p = get_object_or_404(
@@ -721,14 +736,17 @@ def pedido_detail(request, pk):
         p.approval_token = gen_approval_token()
         p.save(update_fields=["approval_token"])
 
+    # Itens do pedido
     itens = p.itens.select_related("variacao__produto")
 
+    # Totais
     subtotal = itens.aggregate(
         t=Coalesce(Sum(LINE_TOTAL, output_field=Money), ZERO_MONEY)
     )["t"] or Decimal("0.00")
 
     desc_pct = p.desconto_percentual or Decimal("0")
     acr_pct  = p.acrescimo_percentual or Decimal("0")
+
     val_desc = (subtotal * (desc_pct / Decimal("100"))).quantize(Decimal("0.01"))
     val_acr  = (subtotal * (acr_pct  / Decimal("100"))).quantize(Decimal("0.01"))
     total    = (subtotal - val_desc + val_acr).quantize(Decimal("0.01"))
@@ -752,6 +770,9 @@ def pedido_detail(request, pk):
         "approval_url": approval_url,
         "coleta": coleta_obj,
         "pessoas": pessoas,
+
+        # 🔹 adiciona as etapas do Kanban
+        "ETAPAS": Pedido.ETAPA_PRODUCAO,
     }
     return render(request, "camisas/pedido_detail.html", ctx)
 
@@ -3230,3 +3251,29 @@ def pedido_registrar_pagamento(request, pk):
         "valor_sugerido": valor_sugerido,
         "formas": Pagamento.FORMA_CHOICES,  # passa para o template
     })
+
+@login_required
+def kanban_pedidos(request):
+    """
+    Mostra todos os pedidos organizados em colunas do Kanban.
+    """
+    colunas = {k: [] for k, _ in Pedido.ETAPA_PRODUCAO}
+    pedidos = Pedido.objects.select_related("cliente").order_by("data_entrega", "id")
+    for p in pedidos:
+        colunas[p.etapa_producao].append(p)
+
+    return render(request, "camisas/kanban.html", {"colunas": colunas, "Pedido": Pedido})
+
+
+@login_required
+def mudar_etapa_pedido(request, pk, etapa):
+    """
+    Move o pedido para a próxima/qualquer etapa do Kanban.
+    """
+    pedido = get_object_or_404(Pedido, pk=pk)
+    if etapa not in dict(Pedido.ETAPA_PRODUCAO):
+        return redirect("camisas:kanban")
+
+    pedido.etapa_producao = etapa
+    pedido.save(update_fields=["etapa_producao"])
+    return redirect("camisas:kanban")
