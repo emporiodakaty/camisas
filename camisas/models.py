@@ -672,17 +672,33 @@ class PersonalizacaoItem(models.Model):
     nome = models.CharField(max_length=100, blank=True, null=True)
     numero = models.CharField(max_length=10, blank=True, null=True)
     outra_info = models.CharField(max_length=200, blank=True, null=True)
-    tamanho_camisa = models.CharField(max_length=10, choices=TAM_CAMISA, blank=True, null=True)
+    tamanho_camisa = models.CharField(
+        max_length=10,
+        choices=TAM_CAMISA,
+        blank=True,
+        null=True
+    )
 
-    # 🔹 Novo campo
-    quantidade = models.PositiveIntegerField(default=1)
+    # 🔹 quantidade agora é opcional
+    quantidade = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        default=None,
+        help_text="Quantidade opcional"
+    )
 
     incluir_short = models.BooleanField(default=False)
-    tamanho_short = models.CharField(max_length=10, choices=TAM_SHORT, blank=True, null=True)
+    tamanho_short = models.CharField(
+        max_length=10,
+        choices=TAM_SHORT,
+        blank=True,
+        null=True
+    )
 
     def __str__(self):
         qtd = f"x{self.quantidade}" if self.quantidade else ""
         return f"{self.nome or ''} {self.numero or ''} {self.tamanho_camisa or ''} {qtd}".strip()
+
 
 
 class Costureira(models.Model):
