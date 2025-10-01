@@ -10,7 +10,6 @@
     html{ font-size: var(--base-font); }
     body{ background:#f6f8fb; color:var(--ink); }
 
-    /* paper layout (mesmo estilo do orçamento) */
     .paper{ max-width: 960px; margin: 24px auto; background:#fff; border:1px solid #a7abb3; border-radius:12px; box-shadow:0 10px 24px rgba(17,24,39,.08); }
     .paper .p-wrap{ padding: 28px; }
     .brand-bar{ background:linear-gradient(90deg,var(--g1),var(--g2)); color:#fff; padding:14px 20px; border-top-left-radius:12px; border-top-right-radius:12px; }
@@ -20,18 +19,16 @@
     .table{ font-size:.875rem; }
     .table thead th{ font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:#64748b; border-top:0; }
 
-    /* células em branco para preenchimento manual */
     .w-write{ min-width:80px; }
     .w-write-lg{ min-width:160px; }
-
     .sig-line{ border-top:1px solid #000; padding-top:.5rem; }
-
-    /* caixa de instruções */
     .info-box{ border:1px dashed #cbd5e1; background:#fafbff; border-radius:10px; padding:12px; }
 
-    /* manter cabeçalho/rodapé da tabela na impressão */
     thead { display: table-header-group; }
     tfoot { display: table-footer-group; }
+
+    .sizes-table th, .sizes-table td{ text-align:center; }
+    .sizes-table th{ white-space:nowrap; }
 
     @page{ size:A4; margin:12mm; }
     @media print{
@@ -49,7 +46,7 @@
 <body>
 
 <div class="paper">
-  <!-- topo (brand bar) -->
+  <!-- topo -->
   <div class="brand-bar d-flex align-items-center justify-content-between">
     <div class="d-flex align-items-center gap-3">
       {% if r.empresa.logo_has_file %}
@@ -94,22 +91,21 @@
 
     <!-- INSTRUÇÕES -->
     <div class="info-box small mb-3">
-      <div class="fw-semibold mb-1">Instruções de preenchimento (recebimento)</div>
+      <div class="fw-semibold mb-1">Instruções de recebimento</div>
       <ul class="mb-0">
-        <li>Confira a coluna <strong>Previsto</strong> para cada variação (tamanho/cor).</li>
+        <li>Confira a coluna <strong>Previsto</strong> por tamanho (tipo).</li>
         <li>Informe a quantidade <strong>OK</strong> (efetivamente recebida).</li>
-        <li>Se houve, registre as quantidades de <strong>Perda</strong>, <strong>Extravio</strong> e <strong>Devolvida</strong>.</li>
-        <li>A soma <em>OK + Perda + Extravio + Devolvida</em> deve conferir com o <em>Previsto</em> (ou justificar em Observações).</li>
+        <li>Se houve, registre <strong>Perda</strong>, <strong>Extravio</strong> e <strong>Devolvida</strong>.</li>
       </ul>
     </div>
 
-    <!-- ITENS -->
+    <!-- ITENS (cada linha leva data-size e data-prev para montarmos a grade) -->
     <div class="table-responsive mb-2">
-      <table class="table table-sm align-middle">
+      <table class="table table-sm align-middle" id="tblItens">
         <thead>
           <tr>
             <th style="width:36px;">#</th>
-            <th>Produto / Variação</th>
+            <th>Produto / Tamanho</th>
             <th>Previsto</th>
             <th>OK</th>
             <th>Perda</th>
@@ -120,9 +116,9 @@
         </thead>
         <tbody>
           {% for it in r.itens.all %}
-          <tr>
+          <tr data-size="{{ it.variacao.tipo|upper }}" data-prev="{{ it.qtd_prevista }}">
             <td>{{ forloop.counter }}</td>
-            <td>{{ it.variacao.produto.nome }} {{ it.variacao.tamanho }}/{{ it.variacao.cor }}</td>
+            <td>{{ it.variacao.produto.nome }} • {{ it.variacao.tipo }}</td>
             <td>{{ it.qtd_prevista }}</td>
             <td class="w-write"></td>
             <td class="w-write"></td>
@@ -143,6 +139,23 @@
         </tfoot>
       </table>
     </div>
+
+<!-- GRADE POR TAMANHO (Personalização) -->
+<h2 class="h6 mt-3 mb-2">Grade por tamanho (Personalização do pedido)</h2>
+{% if sizes_list_person %}
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered sizes-table">
+      <thead><tr>
+        {% for s, _q in sizes_list_person %}<th>{{ s }}</th>{% endfor %}
+      </tr></thead>
+      <tbody><tr>
+        {% for _s, q in sizes_list_person %}<td>{{ q }}</td>{% endfor %}
+      </tr></tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="text-muted mb-3">Sem dados de personalização localizados para este pedido/produto.</div>
+{% endif %}
 
     <!-- Observações e assinatura -->
     <div class="row mt-4 g-3">
@@ -170,6 +183,69 @@
     </div>
   </div>
 </div>
+
+<script>
+(function(){
+  // Ordem oficial (personalização)
+  const SIZE_ORDER = ["PP","P","M","G","GG","XG","PP-BL","P-BL","M-BL","G-BL","GG-BL","XG-BL","PPB","PB","MB","GB","GGB","XGGB"];
+  const FALLBACK = "DIVERSOS";
+
+  // Normaliza número: "10", "10.0", "10,0", "1.234,56"
+  function toQty(v){
+    if (v == null) return 0;
+    let s = String(v).trim();
+    if (!s) return 0;
+    // remove milhares e converte vírgula decimal
+    // regra: se há vírgula e não há ponto -> troca vírgula por ponto
+    // se há ambos -> remove pontos de milhar e troca a última vírgula por ponto
+    const hasDot = s.includes(".");
+    const hasCom = s.includes(",");
+    if (hasCom && !hasDot){
+      s = s.replace(/\./g,"").replace(",",".");
+    } else if (hasDot && hasCom){
+      const lastCom = s.lastIndexOf(",");
+      s = s.slice(0,lastCom).replace(/\./g,"") + "." + s.slice(lastCom+1).replace(/,/g,"");
+    } else {
+      s = s.replace(/,/g,"");
+    }
+    const n = Number(s);
+    return isFinite(n) ? n : 0;
+  }
+
+  // Mapa com ordem oficial iniciada
+  const map = {};
+  SIZE_ORDER.forEach(s => map[s] = 0);
+
+  // Soma previsto por tamanho a partir da tabela
+  document.querySelectorAll('#tblItens tbody tr[data-size]').forEach(tr=>{
+    let size = (tr.getAttribute('data-size')||'').toUpperCase().trim();
+    const qty  = toQty(tr.getAttribute('data-prev'));
+    if (!size) size = FALLBACK;
+    if (!(size in map)) map[size] = 0; // aceita tamanhos fora da lista
+    map[size] += qty;
+  });
+
+  // Cabeçalho e linha de valores (mostrar TODOS)
+  const head = document.getElementById('sizesHead');
+  const body = document.getElementById('sizesBody');
+
+  const extras = Object.keys(map).filter(s => !SIZE_ORDER.includes(s));
+  const allSizes = [...SIZE_ORDER, ...extras];
+
+  allSizes.forEach(s=>{
+    const th = document.createElement('th');
+    th.textContent = s;
+    head.appendChild(th);
+  });
+
+  allSizes.forEach(s=>{
+    const td = document.createElement('td');
+    const v = map[s] || 0;
+    td.textContent = Number.isInteger(v) ? String(v) : v.toFixed(1);
+    body.appendChild(td);
+  });
+})();
+</script>
 
 </body>
 </html>

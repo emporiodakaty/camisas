@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <title>Termo de Recebimento • Pedido #{{ pedido.pk }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+
+  <style>
+    :root{
+      --ink:#0f172a; --muted:#64748b; --g1:#f30c80; --g2:#f30c80;
+      --base-font:12px; --line:#e5e7eb;
+    }
+    html{font-size:var(--base-font);}
+    body{background:#fff;color:var(--ink);margin:0;}
+
+    /* layout full width */
+    .wrap{width:100%;}
+    .page{padding:6px 10px;}
+    .card{border:1px solid var(--line);border-radius:.5rem;box-shadow:none;}
+    .card.pad-compact{padding:.6rem .6rem;}
+    .mini{font-size:.82rem;color:var(--muted)}
+    .pill{display:inline-block;padding:.08rem .4rem;border-radius:999px;font-size:.68rem;
+      font-weight:600;border:1px solid rgba(0,0,0,.08);background:#f8fafc;color:#334155}
+    .chip{display:inline-flex;align-items:center;gap:.25rem;padding:.12rem .4rem;border:1px solid var(--line);
+      border-radius:999px;background:#fff;font-weight:700;font-size:.7rem}
+    .chip--warn{background:#fff7e6;border-color:#fcd34d}
+    .soft{border:1px solid var(--line);border-radius:.35rem;padding:.5rem;}
+    .divider{height:1px;background:var(--line);margin:.5rem 0}
+    .h-title{font-size:1rem;margin:0}
+    .h-sub{font-size:.9rem;margin:0}
+
+    /* tabela full-width e slim */
+    .table{width:100%;margin-bottom:0;}
+    .table thead th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:#64748b;border-top:0}
+    .table-sm> :not(caption)>*>*{padding:.22rem .35rem;}
+
+    /* quantidade com caixinha à direita (não colada) */
+    .qty-cell{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px; min-width:84px;
+    }
+    .qty-num{font-weight:600;}
+    .chkbox{
+      display:inline-block; width:13px; height:13px;
+      border:1.6px solid #111; border-radius:2px; box-sizing:border-box;
+      flex:0 0 auto;
+    }
+
+    /* assinatura visual */
+    .sig-img{
+      max-height:70px; width:auto; object-fit:contain;
+      border:1px solid var(--line); border-radius:.35rem; background:#fff; padding:4px;
+    }
+    .qr{
+      max-height:78px; width:auto; border:1px solid var(--line);
+      border-radius:.35rem; background:#fff; padding:4px;
+    }
+    .sig-meta{font-size:.72rem; color:var(--muted); line-height:1.25;}
+
+    /* impressão A4 com margens pequenas */
+    @page { size: A4; margin: 8mm 8mm; }
+    @media print{
+      .no-print{display:none!important}
+      body{background:#fff}
+      .page{padding:0;}
+      .card{border:0}
+      table, tr, td, th, thead, tbody{page-break-inside:avoid!important;}
+      a[href]:after{content:"";}
+    }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark no-print" style="background:linear-gradient(90deg,var(--g1),var(--g2));padding:.35rem .6rem">
+  <div class="container-fluid">
+    <span class="navbar-brand fw-bold" style="font-size:.95rem">Termo de Recebimento</span>
+    <div class="ms-auto">
+      <a class="btn btn-sm btn-light" href="javascript:window.print()">Imprimir</a>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap page container-fluid">
+  <!-- Cabeçalho -->
+  <div class="card pad-compact mb-2">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h1 class="h-title">Pedido #{{ pedido.pk }}</h1>
+        <div class="mini">
+          <strong>{{ empresa.nome_fantasia }}</strong>
+          {% if empresa.cnpj %} • CNPJ: {{ empresa.cnpj }}{% endif %}
+          • Cliente: {{ cliente.nome }} • Emissão: {{ hoje|date:"d/m/Y" }}
+        </div>
+      </div>
+      <div class="text-end">
+        <div>
+          <span class="badge
+            {% if pedido.status == 'FAT' %}text-bg-success
+            {% elif pedido.status == 'PROD' %}text-bg-primary
+            {% elif pedido.status == 'PEN' %}text-bg-warning
+            {% elif pedido.status == 'ORC' %}text-bg-secondary
+            {% else %}text-bg-dark{% endif %}"
+            style="font-size:.68rem;">
+            {{ pedido.get_status_display }}
+          </span>
+          <span class="pill">{{ pedido.get_etapa_producao_display }}</span>
+        </div>
+        <div class="mini mt-1">
+          Criado: {{ pedido.criado_em|date:"d/m/Y H:i" }}
+          {% if pedido.data_entrega %} • Entrega: {{ pedido.data_entrega|date:"d/m/Y" }}{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Dados do cliente/pedido -->
+    <div class="row g-1">
+      <div class="col-6">
+        <div class="soft h-100">
+          <div class="h-sub fw-semibold mb-1">Cliente</div>
+          <div class="mini">
+            {{ cliente.nome }}
+            {% if cliente.cpf_cnpj %}<br>CPF/CNPJ: {{ cliente.cpf_cnpj }}{% endif %}
+            {% if cliente.telefone %}<br>Tel: {{ cliente.telefone }}{% endif %}
+            {% if cliente.email %}<br>E-mail: {{ cliente.email }}{% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="col-6">
+        <div class="soft h-100">
+          <div class="h-sub fw-semibold mb-1">Pedido</div>
+          <div class="mini">
+            Nº Orçamento: {{ pedido.numero_orcamento|default:"—" }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resumo por tamanho -->
+  <div class="card pad-compact mb-2">
+    <div class="d-flex justify-content-between align-items-center">
+      <h2 class="h-sub fw-semibold m-0">Resumo por Tamanho (Personalização)</h2>
+      <div class="fw-semibold" style="font-size:.85rem">Total de peças: {{ total_geral }}</div>
+    </div>
+    {% if resumo_geral %}
+      <div class="d-flex flex-wrap gap-1 mt-1">
+        {% for tam, qt in resumo_geral.items %}
+          <span class="chip {% if tam == 'DIVERSOS' %}chip--warn{% endif %}">
+            {% if tam == "1A" %}1 ANO
+            {% elif tam == "2A" %}2 ANOS
+            {% elif tam == "4A" %}4 ANOS
+            {% elif tam == "6A" %}6 ANOS
+            {% elif tam == "8A" %}8 ANOS
+            {% elif tam == "10A" %}10 ANOS
+            {% elif tam == "12A" %}12 ANOS
+            {% else %}{{ tam }}{% endif %}
+            <span>{{ qt }}</span>
+          </span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="mini">Nenhuma personalização cadastrada.</div>
+    {% endif %}
+  </div>
+
+  <!-- Itens por tamanho (checkbox à direita da quantidade) -->
+  <div class="card pad-compact">
+    <h2 class="h-sub fw-semibold mb-1">Itens Recebidos (por tamanho)</h2>
+    <div class="table-responsive" style="width:100%">
+      <table class="table table-sm align-middle w-100">
+        <thead>
+          <tr>
+            <th style="width:46%">Produto / Variação</th>
+            <th style="width:24%">Tamanho</th>
+            <th style="width:16%">Quantidade</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in itens_bloco %}
+            {% if it.mapa %}
+              {% for tam, qt in it.mapa.items %}
+                <tr class="{% if tam == 'DIVERSOS' %}table-warning{% endif %}">
+                  {% if forloop.first %}
+                    <td rowspan="{{ it.mapa|length }}" class="fw-semibold">
+                      {{ it.produto }}{% if it.variacao %} • {{ it.variacao }}{% endif %}
+                      <div class="mini">Total do item: {{ it.qtd_total_item }}</div>
+                    </td>
+                  {% endif %}
+                  <td>
+                    {% if tam == "1A" %}1 ANO
+                    {% elif tam == "2A" %}2 ANOS
+                    {% elif tam == "4A" %}4 ANOS
+                    {% elif tam == "6A" %}6 ANOS
+                    {% elif tam == "8A" %}8 ANOS
+                    {% elif tam == "10A" %}10 ANOS
+                    {% elif tam == "12A" %}12 ANOS
+                    {% else %}{{ tam }}{% endif %}
+                  </td>
+                  <td>
+                    <div class="qty-cell">
+                      <span class="qty-num">{{ qt }}</span>
+                      <span class="chkbox"></span>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td class="fw-semibold">{{ it.produto }}{% if it.variacao %} • {{ it.variacao }}{% endif %}</td>
+                <td class="text-muted">—</td>
+                <td>
+                  <div class="qty-cell">
+                    <span class="qty-num">0</span>
+                    <span class="chkbox"></span>
+                  </div>
+                </td>
+              </tr>
+            {% endif %}
+          {% empty %}
+            <tr><td colspan="3" class="text-center text-muted py-3">Nenhum item neste pedido.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Declaração de recebimento -->
+    <div class="soft" style="margin-top:.5rem">
+      <div class="h-sub fw-semibold mb-1">Declaração de recebimento e conformidade</div>
+      <div class="mini" style="line-height:1.35">
+        Declaro, para os devidos fins, que <strong>recebi</strong> os produtos descritos neste termo, nas
+        <strong>quantidades</strong> e <strong>tamanhos</strong> indicados, em adequado estado aparente. Estou ciente de que:
+        <ol class="mini mb-1" style="margin:.25rem 0 .35rem 1rem;padding:0">
+          <li>quaisquer <strong>divergências</strong> devem ser registradas no campo próprio abaixo, no ato do recebimento;</li>
+          <li>após a assinatura, não serão aceitas reclamações por <strong>avarias aparentes</strong>, quantidades ou personalizações como descritas;</li>
+          <li>eventuais <strong>defeitos não aparentes</strong> deverão ser comunicados em até <strong>7 (sete) dias corridos</strong> a contar desta data.</li>
+        </ol>
+        Assino este termo como <strong>ciência e aceite</strong> das condições acima.
+      </div>
+    </div>
+
+    <!-- Área de divergências + assinaturas -->
+    <div class="row g-2 mt-2 align-items-end">
+      <div class="col-12">
+        <div class="mini text-uppercase mb-1">Divergências/Observações do Cliente</div>
+        <div style="min-height:68px;border:1px dashed var(--line);border-radius:.35rem;"></div>
+      </div>
+
+      <!-- Assinatura do Cliente (linha em branco) -->
+      <div class="col-6 text-center" style="margin-top:10px">
+        <div style="border-top:1px solid #0f172a; margin:22px 0 6px;"></div>
+        <div class="mini">Assinatura do Cliente – {{ cliente.nome }}</div>
+        <div class="mini">Data: ____/____/______</div>
+      </div>
+
+      <!-- Assinatura da Empresa -->
+      <div class="col-6 text-center" style="margin-top:10px">
+        {% if empresa_esign %}
+          {% if empresa_esign.qr_data_url %}
+            <div class="d-flex justify-content-center mb-1">
+              <img class="qr" src="{{ empresa_esign.qr_data_url }}" alt="QR de verificação da assinatura digital">
+            </div>
+          {% endif %}
+          <div style="border-top:1px solid #0f172a; margin:6px 0 6px;"></div>
+          <div class="mini fw-semibold">Assinatura Digital – {{ empresa.nome_fantasia }}</div>
+          <div class="sig-meta">
+            Responsável: {{ empresa_esign.signer_name }}<br>
+            Assinado em: {{ empresa_esign.signed_at|date:"d/m/Y H:i" }}<br>
+            Hash: {{ empresa_esign.hash|slice:":12" }}…
+          </div>
+        {% elif empresa.logo_url_safe %}
+          <div class="d-flex justify-content-center mb-1">
+            <img class="sig-img" src="{{ empresa.logo_url_safe }}" alt="Assinatura/Carimbo da empresa">
+          </div>
+          <div style="border-top:1px solid #0f172a; margin:6px 0 6px;"></div>
+          <div class="mini">Responsável – {{ empresa.nome_fantasia }}</div>
+          <div class="mini">Data: ____/____/______</div>
+        {% else %}
+          <div style="border-top:1px solid #0f172a; margin:22px 0 6px;"></div>
+          <div class="mini">Responsável – {{ empresa.nome_fantasia }}</div>
+          <div class="mini">Data: ____/____/______</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="text-end mt-2 no-print">
+    <a class="btn btn-sm btn_secondary btn-secondary" href="{% url 'camisas:pedido_update' pedido.pk %}">Editar Personalizações</a>
+    <button class="btn btn-sm btn-primary" onclick="window.print()">Imprimir</button>
+  </div>
+</main>
+</body>
+</html>

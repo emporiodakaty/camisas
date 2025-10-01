@@ -50,14 +50,22 @@ urlpatterns = [
     path("pedido/<int:pk>/reabrir-orcamento/", views.pedido_reabrir_orcamento, name="pedido_reabrir_orcamento"),
     path("pedidos/<int:pk>/excluir/", views.pedido_delete, name="pedido_delete"),
 
-    path("kanban/", views.kanban_pedidos, name="kanban"),
-    path("kanban/mudar/<int:pk>/<str:etapa>/", views.mudar_etapa_pedido, name="mudar_etapa_pedido"),
+    path("kanban/", views.kanban_pedidos, name="kanban_pedidos"),
+    path("kanban/mover/<int:pk>/<str:etapa>/", views.mudar_etapa_pedido, name="mudar_etapa_pedido"),
+    path("pedidos/<int:pk>/arte-tamanhos/", views.pedido_arte_tamanhos, name="pedido_arte_tamanhos"),
     # Remessas (Terceirização)
     path("remessas/", views.remessa_list, name="remessa_list"),
     path("remessas/nova/", views.remessa_create, name="remessa_create"),
     path("remessas/<int:pk>/", views.remessa_detail, name="remessa_detail"),
     path("remessas/<int:pk>/receber/", views.remessa_receive, name="remessa_receive"),
     path("remessas/<int:pk>/imprimir/", views.remessa_print, name="remessa_print"),
+
+    path("designer/", views.designer_dashboard, name="designer_dashboard"),
+    path("designer/arte/nova/", views.arte_create, name="arte_create"),
+    path("designer/arte/<int:pk>/editar/", views.arte_edit, name="arte_edit"),
+    path("designer/arte/<int:pk>/status/", views.arte_set_status, name="arte_set_status"),
+    path("designer/arte/<int:pk>/publicar/", views.arte_publicar, name="arte_publicar"),
+    path("designer/", views.designer_home, name="designer_home"),
 
     # Costureiras
     path("costureiras/", views.costureira_list, name="costureira_list"),
@@ -117,6 +125,8 @@ urlpatterns = [
     # ARTE (público: aprovação/recusa com assinatura)
     path("pedidos/<int:pk>/enviar-arte/", views.pedido_enviar_arte, name="pedido_enviar_arte"),
     path("arte/<str:token>/", views.arte_publica, name="arte_publica"),
+
+    path("pedidos/<int:pk>/termo-recebimento/", views.pedido_termo_recebimento, name="pedido_termo_recebimento"),
 ]
 
 # ---- Assinatura eletrônica: registre SEMPRE, com fallback de depuração ----

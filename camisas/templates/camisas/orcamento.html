@@ -1,3 +1,6 @@
+{# templates/camisas/pedido_orcamento.html #}
+{% load dict_extras %}
+
 <!doctype html>
 <html lang="pt-br">
 <head>
@@ -29,11 +32,17 @@
     .chip.rej{background:#fef2f2;border-color:#ef4444;color:#7f1d1d}
     .chip.pend{background:#f8fafc;border-color:#cbd5e1;color:#334155}
 
-    /* ===== OCULTAR TOTAL (apenas subtotal da tabela + bloco de totais) ===== */
+    /* Ocultar TOTAL (opcional) */
     .hide-grandtotal .col-subtotal,
     .hide-grandtotal .totals-wrapper { display:none !important; }
-    /* corrige cabeçalho quando esconde a coluna */
     .hide-grandtotal th.col-subtotal { display:none !important; }
+
+    /* ===== Grade de tamanhos (compacta, colunas fixas) ===== */
+    .sizes th, .sizes td{ text-align:center; vertical-align:middle; }
+    .sizes .size-col{ width:46px; min-width:46px; max-width:46px; padding:.3rem .25rem; }
+    .sizes .col-outros{ width:70px; }
+    .sizes .col-total{ width:80px; }
+    .sizes .muted-0{ color:#94a3b8; } /* zeros apagados */
 
     @media print{
       html{font-size:11px}
@@ -66,7 +75,6 @@
       </div>
     </div>
     <div class="d-flex align-items-center gap-2 no-print">
-      <!-- ===== OCULTAR TOTAL: controle local (não salva no banco) ===== -->
       <div class="form-check me-2">
         <input class="form-check-input" type="checkbox" id="chkHideTotal"
                {% if pedido.orcamento_ocultar_total %}checked{% endif %}>
@@ -104,6 +112,41 @@
       </div>
     </div>
 
+{# =================== GRADE POR TAMANHO (PERSONALIZAÇÕES) =================== #}
+<div class="mt-2">
+  <div class="d-flex align-items-center justify-content-between mb-1">
+    <h3 class="h6 m-0">Grade por tamanho (personalizações)</h3>
+    <div class="mini">Total: <strong>{{ global_total|default:"0" }}</strong></div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered sizes mb-2">
+      <thead>
+        <tr>
+          {% for s in size_cols %}
+            <th class="size-col">{{ s }}</th>
+          {% endfor %}
+          <th class="col-total">TOTAL</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          {% for s in size_cols %}
+            <td class="size-col">{{ global_map|get_item:s }}</td>
+          {% endfor %}
+          <td class="col-total"><strong>{{ global_total|default:"0" }}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% if not size_cols %}
+    <div class="small text-muted">Não há personalizações com tamanho neste pedido.</div>
+  {% endif %}
+</div>
+{# =================== /GRADE POR TAMANHO =================== #}
+
+
     <!-- ITENS -->
     <div class="table-responsive">
       <table class="table align-middle">
@@ -138,7 +181,7 @@
       </table>
     </div>
 
-    <!-- TOTAIS (escondido quando marcar "ocultar total") -->
+    <!-- TOTAIS -->
     <div class="row justify-content-end totals-wrapper">
       <div class="col-md-6">
         <div class="border rounded-3 p-2 totals">
@@ -224,13 +267,9 @@
   const paper = document.getElementById('paper');
   const chk = document.getElementById('chkHideTotal');
   if (chk) {
-    const apply = () => {
-      paper.classList.toggle('hide-grandtotal', chk.checked);
-    };
+    const apply = () => paper.classList.toggle('hide-grandtotal', chk.checked);
     chk.addEventListener('change', apply);
-    // garante estado atual (caso o browser recupere o checkbox)
     apply();
-    // persiste durante a sessão (opcional)
     try {
       const key = 'orc_hide_total_' + '{{ pedido.pk }}';
       if (sessionStorage.getItem(key) !== null) {

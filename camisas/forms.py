@@ -622,3 +622,18 @@ class PessoaColetaForm(forms.ModelForm):
     class Meta:
         model = PessoaColeta
         fields = ["nome", "numero", "tamanho", "valor", "status_pagamento"]
+
+from .models import ArteDesign
+
+class ArteDesignForm(forms.ModelForm):
+    publicar_no_pedido = forms.BooleanField(
+        required=False, initial=True,
+        help_text="Ao salvar, publicar esta arte no pedido vinculado."
+    )
+
+    class Meta:
+        model = ArteDesign
+        fields = ["empresa", "cliente", "titulo", "descricao", "arquivo", "status"]
+        widgets = {
+            "descricao": forms.Textarea(attrs={"rows": 3}),
+        }

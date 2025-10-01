@@ -5,6 +5,37 @@
   <title>Pedido #{{ pedido.pk }}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
+<style>
+  /* modo compacto */
+  .stage-card{
+    border:1px solid #e5e7eb;border-radius:.6rem;padding:.45rem .6rem;
+    transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+    display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-width:160px;
+    font-size:.82rem;
+  }
+  .stage-card:hover{transform:translateY(-1px);box-shadow:0 6px 14px rgba(2,6,23,.06);border-color:#d4d4d8}
+  .stage-card .stage-label{font-weight:600;line-height:1}
+  .stage-card.muted{background:#f8fafc;color:#475569}
+  .stage-card.active{background:#0d6efd;color:#fff;border-color:#0d6efd}
+  .stage-card .pill{background:rgba(255,255,255,.16);color:inherit;border:1px solid rgba(255,255,255,.18);font-size:.68rem;padding:.1rem .4rem}
+
+  .btn-circle{
+    width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;
+    padding:0;border:1px solid rgba(0,0,0,.06);background:#10b981;color:#fff;box-shadow:0 4px 10px rgba(16,185,129,.22);
+    font-size:.9rem;line-height:1;
+  }
+  .btn-circle:hover{filter:brightness(.96)}
+  .btn-circle:disabled{opacity:.6;box-shadow:none}
+
+  .move-wrap{display:flex;align-items:center;gap:.35rem}
+  .move-hint{font-size:.72rem;color:#64748b}
+  @media (max-width: 992px){
+    .move-hint{display:none}
+    .stage-card{min-width:150px}
+  }
+</style>
+
 
   <style>
     :root{--ink:#0f172a;--muted:#64748b;--g1:#f30c80;--g2:#f30c80;--ring:rgba(37,99,235,.18);--base-font:14px;}
@@ -58,6 +89,14 @@
 
     <div class="d-flex flex-wrap gap-2 mt-3">
       <a class="btn btn-sm btn-warning" href="{% url 'camisas:pedido_update' pedido.pk %}">Editar</a>
+      <a class="btn btn-sm btn-outline-primary"
+   href="{% url 'camisas:pedido_arte_tamanhos' pedido.pk %}"
+   target="_blank" rel="noopener"
+   title="Visualizar a arte e a grade de tamanhos (personalizações)">
+  <i class="bi bi-grid-3x3-gap-fill me-1"></i>
+  Arte & Tamanhos
+</a>
+
       <a class="btn btn-sm btn-success" href="{% url 'camisas:pedido_orcamento' pedido.pk %}" target="_blank" rel="noopener">Ver/Imprimir Orçamento</a>
       <a class="btn btn-sm btn-info" href="{% url 'camisas:pedido_gerar_ops' pedido.pk %}">Gerar OPs</a>
       <a class="btn btn-sm btn-outline-dark" href="{% url 'camisas:pedido_cotacao_precos' pedido.pk %}" target="_blank" rel="noopener">Cotação de Preços</a>
@@ -68,6 +107,11 @@
       {% endif %}
       <a class="btn btn-sm btn-success" href="{% url 'camisas:pedido_registrar_pagamento' pedido.pk %}">
       Registrar Pagamento
+      </a>
+      <a class="btn btn-sm btn-outline-primary"
+      href="{% url 'camisas:pedido_termo_recebimento' pedido.pk %}"
+      target="_blank" rel="noopener">
+      Termo de Recebimento (Cliente)
       </a>
 
     </div>
@@ -270,28 +314,41 @@
       </div>
     </div>
   </div>
-  <!-- Kanban de Produção -->
-  <div class="card p-3 bg-white mb-3">
-    <h2 class="h6 mb-3">Fluxo de Produção</h2>
-    <div class="d-flex flex-wrap gap-2">
+<!-- Kanban de Produção -->
+<div class="card p-3 bg-white mb-3">
+  <h2 class="h6 mb-3">Fluxo de Produção</h2>
 
-      {% for key, label in ETAPAS %}
-        <div class="p-2 rounded
+  <div class="d-flex flex-wrap gap-2">
+    {% for key, label in ETAPAS %}
+      <div class="stage-card {% if pedido.etapa_producao == key %}active{% else %}muted{% endif %}">
+        <div class="d-flex align-items-center gap-2">
+          <span class="stage-label">{{ label }}</span>
           {% if pedido.etapa_producao == key %}
-            bg-primary text-white fw-bold
-          {% else %}
-            bg-light text-muted
-          {% endif %}">
-          {{ label }}
-          {% if pedido.etapa_producao != key %}
-            <a href="{% url 'camisas:mudar_etapa_pedido' pedido.pk key %}"
-               class="btn btn-sm btn-outline-dark d-block mt-1">Mover</a>
+            <span class="pill badge rounded-pill border-0">
+              <i class="bi bi-check2-circle me-1"></i>Atual
+            </span>
           {% endif %}
         </div>
-      {% endfor %}
 
-    </div>
+        {% if pedido.etapa_producao != key %}
+          <form method="post"
+                action="{% url 'camisas:mudar_etapa_pedido' pedido.pk key %}"
+                class="move-wrap js-move-form">
+            {% csrf_token %}
+            <button type="submit" class="btn-circle" title="Mover para {{ label }}">
+              <i class="bi bi-check2"></i>
+            </button>
+            <span class="move-hint d-none d-md-inline">Confirmar etapa</span>
+          </form>
+        {% else %}
+          <span class="text-white-50 d-none d-md-inline"><i class="bi bi-info-circle"></i> Etapa atual</span>
+        {% endif %}
+      </div>
+    {% endfor %}
   </div>
+</div>
+
+
 
   <!-- Itens e totais -->
   <div class="card p-3 bg-white">
@@ -510,5 +567,14 @@ function printColeta(){
   w.document.close();
 }
 </script>
+<script>
+  document.querySelectorAll('.js-move-form').forEach(function(form){
+    form.addEventListener('submit', function(){
+      const btn = form.querySelector('button[type="submit"]');
+      if(btn){ btn.disabled = true; btn.innerHTML = '<i class="bi bi-check2-all"></i>'; }
+    });
+  });
+</script>
+
 </body>
 </html>

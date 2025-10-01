@@ -18,6 +18,11 @@ from django.db.models.fields.files import FieldFile
 from django.utils.safestring import mark_safe
 from django.utils import timezone
 from cloudinary.models import CloudinaryField
+from django.conf import settings
+from django.db import models
+from django.utils import timezone
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 # =========================
 # Helpers de upload / número
@@ -94,7 +99,8 @@ class Empresa(models.Model):
     endereco = models.CharField(max_length=180, blank=True, null=True)
     cidade = models.CharField(max_length=80, blank=True, null=True)
     uf = models.CharField(max_length=2, blank=True, null=True)
-    logo = CloudinaryField("logo", blank=True, null=True)
+    logo = SafeImageField(upload_to=logo_upload_to, blank=True, null=True)
+
 
     class Meta:
         ordering = ("nome_fantasia",)
@@ -435,7 +441,8 @@ class Pedido(models.Model):
     numero_orcamento = models.CharField(max_length=40, blank=True, null=True)
     validade = models.DateField(blank=True, null=True)
     condicoes = models.TextField(blank=True, null=True)
-    arte = CloudinaryField("arte", blank=True, null=True)
+    arte = SafeImageField(upload_to=arte_upload_to, blank=True, null=True)
+
 
     # ===== Aprovação de orçamento =====
     APPROVAL_CHOICES = (("PEND", "Pendente"), ("APRV", "Aprovado"), ("REJ", "Recusado"))
@@ -661,17 +668,31 @@ class ItemPedido(models.Model):
 # camisas/models.py
 
 class PersonalizacaoItem(models.Model):
+    # ---- Tamanhos de camisa (inclui infantil + adulto + baby look)
     TAM_CAMISA = [
+        # Infantil
+        ("1A",  "1 ano"),
+        ("2A",  "2 anos"),
+        ("4A",  "4 anos"),
+        ("6A",  "6 anos"),
+        ("8A",  "8 anos"),
+        ("10A", "10 anos"),
+        ("12A", "12 anos"),
+
+        # Adulto unissex
         ("PP", "PP"),
-        ("P", "P"),
-        ("M", "M"),
-        ("G", "G"),
+        ("P",  "P"),
+        ("M",  "M"),
+        ("G",  "G"),
         ("GG", "GG"),
         ("XG", "XG"),
+        ("GXG", "GXG"),
+
+        # Baby Look
         ("PP-BL", "PP Baby Look"),
-        ("P-BL", "P Baby Look"),
-        ("M-BL", "M Baby Look"),
-        ("G-BL", "G Baby Look"),
+        ("P-BL",  "P Baby Look"),
+        ("M-BL",  "M Baby Look"),
+        ("G-BL",  "G Baby Look"),
         ("GG-BL", "GG Baby Look"),
         ("XG-BL", "XG Baby Look"),
     ]
@@ -691,6 +712,7 @@ class PersonalizacaoItem(models.Model):
     nome = models.CharField(max_length=100, blank=True, null=True)
     numero = models.CharField(max_length=10, blank=True, null=True)
     outra_info = models.CharField(max_length=200, blank=True, null=True)
+
     tamanho_camisa = models.CharField(
         max_length=10,
         choices=TAM_CAMISA,
@@ -698,7 +720,7 @@ class PersonalizacaoItem(models.Model):
         null=True
     )
 
-    # 🔹 quantidade agora é opcional
+    # quantidade opcional (se vazio, considerar 1 no somatório)
     quantidade = models.PositiveIntegerField(
         blank=True,
         null=True,
@@ -1473,3 +1495,139 @@ class Pagamento(models.Model):
     def __str__(self):
         return f"{self.get_forma_display()} {self.valor} em {self.data:%d/%m/%Y}"
 
+def arte_design_upload_to(instance, filename):
+    return f"artes/{instance.empresa_id or 'X'}/{timezone.now():%Y/%m}/{filename}"
+
+# camisas/models.py
+from django.db import models, transaction
+from django.conf import settings
+from django.utils import timezone
+
+# ✅ imports extras p/ o sinal
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+# ✅ se o SafeImageField estiver em camisas/fields.py
+from .fields import SafeImageField
+
+# Se estas classes estão no MESMO arquivo, ok; se estiverem em módulos separados,
+# mude para strings "camisas.Empresa" etc. (abaixo já uso strings para evitar ordem de definição)
+# from .models import Empresa, Cliente, Pedido  # ← não necessário com strings
+
+
+class ArteDesign(models.Model):
+    STATUS = (
+        ("PEND", "Pendente"),
+        ("WORK", "Em criação"),
+        ("WAIT", "Aguardando"),
+        ("APRV", "Aprovada"),
+        ("REJ",  "Reprovada"),
+        ("IMP",  "Para impressão"),
+    )
+
+    # ⚠️ usei referências por string para evitar problemas de import/ordem
+    empresa   = models.ForeignKey("camisas.Empresa", on_delete=models.PROTECT, related_name="artes")
+    cliente   = models.ForeignKey("camisas.Cliente", on_delete=models.PROTECT, related_name="artes")
+    pedido    = models.ForeignKey("camisas.Pedido", on_delete=models.SET_NULL, null=True, blank=True, related_name="artes")
+
+    titulo    = models.CharField(max_length=160)
+    descricao = models.TextField(blank=True, default="")
+
+    arquivo   = SafeImageField(upload_to="artes/%Y/%m", blank=True, null=True)
+
+    status        = models.CharField(max_length=4, choices=STATUS, default="PEND", db_index=True)
+    criado_em     = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    criado_por    = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        # mais antigas primeiro (prioridade natural)
+        ordering = ("criado_em", "id")
+
+    def __str__(self):
+        return f"Arte #{self.pk} – {self.titulo}"
+
+    # ---------- helpers ----------
+    @property
+    def has_file(self) -> bool:
+        f = getattr(self, "arquivo", None)
+        return bool(f and getattr(f, "name", None))
+
+    @property
+    def file_url(self) -> str:
+        f = getattr(self, "arquivo", None)
+        try:
+            return f.url if (f and getattr(f, "name", None)) else ""
+        except Exception:
+            return ""
+
+    # ---------- publicar no Pedido ----------
+    @transaction.atomic
+    def publicar_no_pedido(self) -> bool:
+        """
+        Copia a arte para Pedido.arte. Cria o Pedido se não existir.
+        Retorna True se conseguiu publicar.
+        """
+        # precisa do arquivo
+        if not self.has_file:
+            return False
+
+        # garante empresa/cliente para criar pedido (se necessário)
+        if not (self.empresa_id and self.cliente_id):
+            return False
+
+        # cria pedido se não houver
+        if not self.pedido_id:
+            # import local para evitar import circular, se seu Pedido estiver em outro módulo
+            from .models import Pedido  # noqa
+            ped = Pedido.objects.create(
+                empresa_id=self.empresa_id,
+                cliente_id=self.cliente_id,
+                status="ORC",               # ORC gera número e segue seu fluxo
+                etapa_producao="ARTE",
+                data_entrega=None,
+                observacao=f"Gerado automaticamente a partir da Arte #{self.pk}",
+            )
+            self.pedido = ped
+            self.save(update_fields=["pedido", "atualizado_em"])
+
+        # publica a arte no pedido
+        try:
+            self.pedido.arte = self.arquivo  # SafeImageField → atribuição direta
+            self.pedido.save(update_fields=["arte"])
+            return True
+        except Exception:
+            return False
+
+
+# --- SINAL: ao criar uma Arte, gera automaticamente um Pedido zerado (e publica a arte se já houver arquivo) ---
+@receiver(post_save, sender=ArteDesign, dispatch_uid="camisas_arte_auto_pedido_v1")
+def _auto_cria_pedido_para_arte(sender, instance: ArteDesign, created, **kwargs):
+    if not created or instance.pedido_id:
+        return
+
+    # import local para evitar import circular
+    from .models import Pedido, Cliente  # noqa
+
+    cliente = instance.cliente  # modelo exige cliente; fallback por segurança:
+    if not cliente:
+        cliente, _ = Cliente.objects.get_or_create(
+            empresa_id=instance.empresa_id,
+            nome="Cliente (Design)"
+        )
+
+    ped = Pedido.objects.create(
+        empresa_id=instance.empresa_id,
+        cliente_id=cliente.id,
+        status="ORC",
+        etapa_producao="ARTE",
+        observacao=f"Pedido criado automaticamente pela Arte #{instance.pk}."
+    )
+
+    # se já tinha arquivo na criação da arte, já publica no pedido
+    if instance.has_file:
+        ped.arte = instance.arquivo
+        ped.save(update_fields=["arte"])
+
+    # vincula de volta
+    ArteDesign.objects.filter(pk=instance.pk).update(pedido_id=ped.id)

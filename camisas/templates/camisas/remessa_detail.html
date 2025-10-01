@@ -18,6 +18,16 @@
     .pill{ display:inline-flex; align-items:center; gap:.4rem; padding:.35rem .6rem; border:1px solid #e5e7eb; border-radius:999px; background:#fff; }
     .pill b{ font-weight:600; }
     .section-title{ font-size:1rem; font-weight:700; margin:0; }
+
+    /* Grade de tamanhos */
+    .grade-grid{ display:grid; gap:.5rem; }
+    @media (min-width: 768px){ .grade-grid{ grid-template-columns: repeat(6, minmax(0,1fr)); } }
+    @media (min-width: 1200px){ .grade-grid{ grid-template-columns: repeat(12, minmax(0,1fr)); } }
+    .grade-card{
+      background:#fff; border:1px solid #e5e7eb; border-radius:.7rem; padding:.5rem .65rem; text-align:center;
+    }
+    .grade-card .sz{ font-size:.72rem; color:#64748b; text-transform:uppercase; letter-spacing:.05em; }
+    .grade-card .val{ font-weight:800; font-size:.98rem; }
   </style>
 </head>
 <body>
@@ -58,22 +68,14 @@
     </div>
   </div>
 
-  <!-- Fluxo (explicação do que o sistema fará ao receber) -->
+  <!-- Fluxo -->
   {% if not r.recebido_em %}
     {% if r.tipo == 'CORTE' %}
-      <div class="alert alert-warning">
-        <strong>Fluxo (Corte):</strong> ao confirmar o recebimento o sistema <em>baixa</em> os insumos da fase CORTE
-        (ex.: tecido), calcula <em>pagamento</em> pela quantidade OK e mantém as peças para a próxima etapa (Costura).
-      </div>
+      <div class="alert alert-warning"><strong>Fluxo (Corte):</strong> ao confirmar o recebimento o sistema <em>baixa</em> os insumos da fase CORTE (ex.: tecido) e calcula o pagamento.</div>
     {% elif r.tipo == 'COSTURA' %}
-      <div class="alert alert-success">
-        <strong>Fluxo (Costura):</strong> ao confirmar o recebimento o sistema <em>baixa</em> os insumos de COSTURA
-        (ex.: linha/etiqueta), <em>dá entrada</em> no estoque de produtos acabados de cada tamanho e gera o <em>pagamento</em>.
-      </div>
+      <div class="alert alert-success"><strong>Fluxo (Costura):</strong> ao confirmar o recebimento o sistema <em>baixa</em> os insumos de COSTURA e <em>dá entrada</em> no estoque por tamanho, gerando pagamento.</div>
     {% elif r.tipo == 'CORRECAO' %}
-      <div class="alert alert-info">
-        <strong>Fluxo (Correção):</strong> normalmente apenas apura o <em>pagamento</em> conforme OK.
-      </div>
+      <div class="alert alert-info"><strong>Fluxo (Correção):</strong> normalmente apenas apura o pagamento conforme OK.</div>
     {% endif %}
   {% else %}
     <div class="alert alert-secondary">
@@ -81,17 +83,18 @@
     </div>
   {% endif %}
 
-  <!-- Resumo em pills -->
+  <!-- Pills -->
   <div class="d-flex flex-wrap gap-2 mb-3">
     <span class="pill"><b>Status</b><span class="badge badge-soft">{{ r.get_status_display }}</span></span>
     <span class="pill"><b>Tipo</b><span class="mini">{{ r.get_tipo_display }}</span></span>
     {% if r.produto %}<span class="pill"><b>Produto</b><span class="mini">{{ r.produto.nome }}</span></span>{% endif %}
+    <span class="pill"><b>Preço base ({{ r.get_tipo_display }})</b><span class="mini">R$ {{ r.preco_base_para_tipo|floatformat:2 }}</span></span>
     <span class="pill"><b>Kg enviados</b><span class="mini">{{ r.kg_enviados|floatformat:3 }}</span></span>
     <span class="pill"><b>Enviado</b><span class="mini">{{ r.enviado_em|date:"d/m/Y H:i" }}</span></span>
     <span class="pill"><b>Recebido</b><span class="mini">{% if r.recebido_em %}{{ r.recebido_em|date:"d/m/Y H:i" }}{% else %}—{% endif %}</span></span>
   </div>
 
-  <!-- Dados da remessa -->
+  <!-- Dados -->
   <div class="card-clean p-3 mb-3">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <h2 class="section-title">Dados da remessa</h2>
@@ -119,6 +122,17 @@
     </div>
   </div>
 
+  <!-- GRADE DE TAMANHOS (Personalizações refletidas na remessa) -->
+  <div class="card-clean p-3 mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h2 class="section-title">Tamanhos da remessa (Previsto / OK)</h2>
+      <span class="badge badge-soft">Personalizações</span>
+    </div>
+    <div id="gradeGrid" class="grade-grid">
+      <!-- preenchido por JS respeitando a ordem de tamanhos -->
+    </div>
+  </div>
+
   <!-- Itens -->
   <div class="card-clean p-3 mb-3">
     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -130,22 +144,24 @@
       <table class="table align-middle">
         <thead>
           <tr>
-            <th>Variação</th>
+            <th>Produto / Tamanho</th>
+            <th>SKU</th>
             <th>Previsto</th>
             <th>OK</th>
             <th>Perda</th>
             <th>Extravio</th>
             <th>Devolvida</th>
-            <th>Preço</th>
+            <th>Preço unit. efetivo</th>
             <th>A pagar</th>
           </tr>
         </thead>
         <tbody id="tblBodyItens">
           {% for it in r.itens.all %}
-          <tr>
-            <td>{{ it.variacao.produto.nome }} {{ it.variacao.tamanho }}/{{ it.variacao.cor }}</td>
-            <td>{{ it.qtd_prevista }}</td>
-            <td>{{ it.qtd_ok }}</td>
+          <tr data-size="{{ it.variacao.tipo|upper }}">
+            <td>{{ it.variacao.produto.nome }} • {{ it.variacao.tipo }}</td>
+            <td class="text-muted">{{ it.variacao.sku }}</td>
+            <td class="col-prev">{{ it.qtd_prevista }}</td>
+            <td class="col-ok">{{ it.qtd_ok }}</td>
             <td>{{ it.qtd_perda }}</td>
             <td>{{ it.qtd_extravio }}</td>
             <td>{{ it.qtd_devolvida }}</td>
@@ -153,12 +169,12 @@
             <td>R$ {{ it.a_pagar|floatformat:2 }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="8" class="text-center text-muted py-4">Sem itens.</td></tr>
+          <tr><td colspan="9" class="text-center text-muted py-4">Sem itens.</td></tr>
           {% endfor %}
         </tbody>
         <tfoot>
           <tr class="fw-bold">
-            <td>Total</td>
+            <td colspan="2">Totais</td>
             <td>{{ r.total_pecas_previstas }}</td>
             <td>{{ r.total_pecas_ok }}</td>
             <td colspan="3"></td>
@@ -181,7 +197,7 @@
     {% endif %}
   </div>
 
-  <!-- Próximo passo (sugestão) -->
+  <!-- Próximo passo -->
   {% if r.recebido_em and r.tipo == 'CORTE' %}
     <div class="card-clean p-3">
       <div class="d-flex justify-content-between align-items-center mb-2">
@@ -200,13 +216,58 @@
 
 <script>
 (function(){
+  // Ordem oficial de tamanhos (mesma usada no backend)
+  const SIZE_ORDER = [
+    "PP","P","M","G","GG","XG",
+    "PP-BL","P-BL","M-BL","G-BL","GG-BL","XG-BL",
+    "PPB","PB","MB","GB","GGB","XGGB"
+  ];
+
+  // --- Monta grade Previsto/OK por tamanho a partir das linhas da tabela ---
+  const grid = document.getElementById('gradeGrid');
+  const rows = Array.from(document.querySelectorAll('#tblBodyItens tr[data-size]'));
+  const sumPrev = Object.create(null);
+  const sumOK   = Object.create(null);
+
+  rows.forEach(tr => {
+    const sz = (tr.getAttribute('data-size') || '').toUpperCase();
+    const prev = parseFloat((tr.querySelector('.col-prev')?.textContent || '0').replace(',','.')) || 0;
+    const ok   = parseFloat((tr.querySelector('.col-ok')?.textContent   || '0').replace(',','.')) || 0;
+    if(!sumPrev[sz]) sumPrev[sz] = 0;
+    if(!sumOK[sz])   sumOK[sz]   = 0;
+    sumPrev[sz] += prev;
+    sumOK[sz]   += ok;
+  });
+
+  // cria cards na ordem desejada; tamanhos não mapeados vão ao final
+  function appendCard(size){
+    const p = (sumPrev[size] || 0);
+    const o = (sumOK[size]   || 0);
+    const card = document.createElement('div');
+    card.className = 'grade-card';
+    card.innerHTML = `
+      <div class="sz">${size}</div>
+      <div class="val">${p} / ${o}</div>
+    `;
+    grid.appendChild(card);
+  }
+
+  SIZE_ORDER.forEach(s => {
+    if (sumPrev[s] || sumOK[s]) appendCard(s);
+  });
+  // quaisquer tamanhos extras
+  Object.keys({...sumPrev, ...sumOK}).forEach(k => {
+    if (!SIZE_ORDER.includes(k)) appendCard(k);
+  });
+
+  // --- Export CSV (já existente) ---
   const btn = document.getElementById('btnExportItens');
   btn && btn.addEventListener('click', ()=>{
     const body = document.getElementById('tblBodyItens');
     if(!body){ alert('Sem dados'); return; }
     const rows = Array.from(body.querySelectorAll('tr'));
     if(!rows.length){ alert('Sem dados'); return; }
-    const head = ['Variacao','Previsto','OK','Perda','Extravio','Devolvida','Preco','A_pagar'];
+    const head = ['Produto_Tamanho','SKU','Previsto','OK','Perda','Extravio','Devolvida','Preco_unit_efetivo','A_pagar'];
     const data = rows.map(r=>{
       const tds = Array.from(r.children);
       return [
@@ -216,11 +277,12 @@
         (tds[3]?.innerText||'').trim(),
         (tds[4]?.innerText||'').trim(),
         (tds[5]?.innerText||'').trim(),
-        (tds[6]?.innerText||'').replace('R$','').trim(),
-        (tds[7]?.innerText||'').replace('R$','').trim()
+        (tds[6]?.innerText||'').trim(),
+        (tds[7]?.innerText||'').replace('R$','').trim(),
+        (tds[8]?.innerText||'').replace('R$','').trim()
       ];
     });
-    const csv = [head, ...data].map(row=> row.map(c=> '"'+(c||'').replace(/"/g,'""')+'"').join(',')).join('\n');
+    const csv = [head, ...data].map(row=> row.map(c=> '"' + (c||'').replace(/"/g,'""') + '"').join(',')).join('\n');
     const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href=url; a.download=`remessa_{{ r.numero }}_itens.csv`;

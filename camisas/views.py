@@ -8,7 +8,7 @@ import json
 from collections import OrderedDict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-
+from django.contrib.auth.decorators import login_required, user_passes_test
 # ===== Django =====
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -685,13 +685,46 @@ def item_tamanhos_editar(request, item_id):
     return render(request, "camisas/item_tamanhos_editar.html", context)
 
 
+SIZE_LABELS = {
+    "1A": "1 ANO", "2A": "2 ANOS", "4A": "4 ANOS", "6A": "6 ANOS",
+    "8A": "8 ANOS", "10A": "10 ANOS", "12A": "12 ANOS",
+    # Se quiser mapear BL também, adicione aqui; senão deixo como está.
+}
+
+def _size_label(s: str) -> str:
+    s = (s or "").strip().upper()
+    return SIZE_LABELS.get(s, s)
+
 @login_required
 def pedido_update(request, pk):
     pedido = get_object_or_404(Pedido, pk=pk)
-    variacoes_qs = VariacaoProduto.objects.select_related("produto").values(
-        "id", "sku", "tamanho", "cor", "preco_sugerido", "produto__nome", "produto__empresa_id"
+
+    # Ordena respeitando sua ordem de tamanhos (usando o campo 'tipo')
+    variacoes_qs = (
+        VariacaoProduto.objects
+        .select_related("produto")
+        .annotate(_sz=size_order_case("tipo"))
+        .order_by("produto__nome", "_sz", "sku")
+        .values("id", "sku", "tipo", "preco_sugerido", "produto__nome", "produto__empresa_id")
     )
-    variacoes_json = json.dumps(list(variacoes_qs), default=str)
+
+    # Mantém compatibilidade com o front: expõe 'tamanho' (igual a 'tipo') e 'cor' (vazio)
+    variacoes_list = []
+    for v in variacoes_qs:
+        tipo = v.get("tipo") or ""
+        variacoes_list.append({
+            "id": v["id"],
+            "sku": v["sku"],
+            "tipo": tipo,
+            "tamanho": tipo,                 # legado para o JS atual
+            "tamanho_label": _size_label(tipo),
+            "cor": "",                       # campo inexistente -> string vazia
+            "preco_sugerido": v["preco_sugerido"],
+            "produto__nome": v["produto__nome"],
+            "produto__empresa_id": v["produto__empresa_id"],
+        })
+
+    variacoes_json = json.dumps(variacoes_list, ensure_ascii=False, default=force_str)
 
     if request.method == "POST":
         form = PedidoForm(request.POST, request.FILES, instance=pedido)
@@ -706,7 +739,10 @@ def pedido_update(request, pk):
         formset = ItemFormSet(instance=pedido)
 
     return render(request, "camisas/pedido_form.html", {
-        "form": form, "formset": formset, "variacoes_json": variacoes_json, "is_edit": True
+        "form": form,
+        "formset": formset,
+        "variacoes_json": variacoes_json,
+        "is_edit": True,
     })
 
 from decimal import Decimal
@@ -715,7 +751,7 @@ from django.db.models import Sum
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
-
+from django.utils.encoding import force_str
 from .models import Pedido
 from .utils import gen_approval_token  # ajuste o import conforme sua estrutura
 from decimal import Decimal
@@ -1138,15 +1174,80 @@ def remessa_generate_next(request, pk):
     messages.success(request, f"Remessa {r2.numero} ({r2.get_tipo_display()}) gerada a partir da {r.numero}.")
     return redirect("camisas:remessa_detail", r2.pk)
 
+SIZE_ORDER = [
+    "PP","P","M","G","GG","XG",
+    "PP-BL","P-BL","M-BL","G-BL","GG-BL","XG-BL",
+    "PPB","PB","MB","GB","GGB","XGGB",
+]
+FALLBACK_SIZE = "DIVERSOS"
+
+def _ordered_pairs(counter: Counter):
+    """retorna lista [(tam, qtd)] na ordem oficial + extras ao final."""
+    extras = [s for s in counter.keys() if s not in SIZE_ORDER]
+    sizes = SIZE_ORDER + extras
+    return [(s, counter.get(s, 0)) for s in sizes]
+
 @login_required
 def remessa_print(request, pk):
     r = get_object_or_404(
         Remessa.objects
-        .select_related("empresa", "costureira")
+        .select_related("empresa", "costureira", "produto")
         .prefetch_related("itens__variacao__produto"),
         pk=pk
     )
-    return render(request, "camisas/remessa_print.html", {"r": r})
+
+    # --------- FALLBACK (previsto a partir dos itens da remessa) ----------
+    c_prev_por_tipo = Counter()
+    for it in r.itens.all():
+        size_like = (getattr(it.variacao, "tipo", "") or "").strip().upper() or FALLBACK_SIZE
+        c_prev_por_tipo[size_like] += float(it.qtd_prevista or 0)
+    sizes_list_prev = _ordered_pairs(c_prev_por_tipo)
+
+    # --------- PRINCIPAL (tamanhos da PERSONALIZAÇÃO do pedido) ----------
+    c_person = Counter()
+    # tenta achar "Pedido #123" na observação
+    pedido_id = None
+    if r.observacao:
+        m = re.search(r"Pedido\s*#(\d+)", r.observacao, re.IGNORECASE)
+        if m:
+            pedido_id = int(m.group(1))
+
+    if pedido_id:
+        pedido = (
+            Pedido.objects.filter(pk=pedido_id)
+            .prefetch_related(
+                Prefetch(
+                    "itens",
+                    queryset=ItemPedido.objects
+                        .select_related("variacao", "variacao__produto")
+                        .prefetch_related("personalizacoes"),
+                )
+            )
+            .first()
+        )
+        if pedido:
+            for it in pedido.itens.all():
+                # se a remessa tem produto associado, restringe ao mesmo produto
+                if r.produto_id and (not it.variacao or it.variacao.produto_id != r.produto_id):
+                    continue
+                for p in it.personalizacoes.all():
+                    tam = (p.tamanho_camisa or "").strip().upper()
+                    if not tam:
+                        continue
+                    qtd = int(p.quantidade or 1)
+                    c_person[tam] += qtd
+
+    sizes_list_person = _ordered_pairs(c_person) if c_person else None
+
+    return render(
+        request,
+        "camisas/remessa_print.html",
+        {
+            "r": r,
+            "sizes_list_prev": sizes_list_prev,     # previsto por linha da remessa (fallback)
+            "sizes_list_person": sizes_list_person, # principal: por personalização (se existir)
+        }
+    )
 
 # ============================
 # FATURAMENTO
@@ -1197,11 +1298,42 @@ Money = DecimalField(max_digits=18, decimal_places=2)
 ZERO_MONEY = Value(Decimal("0.00"), output_field=Money)
 LINE_TOTAL = ExpressionWrapper(F("preco_unitario") * F("quantidade"), output_field=Money)
 
+# ===== ORDEM OFICIAL
+SIZE_ORDER = [
+    # Infantil
+    "1A","2A","4A","6A","8A","10A","12A",
+    # Unissex
+    "PP","P","M","G","GG","XG","GXG",
+    # Baby Look
+    "PP-BL","P-BL","M-BL","G-BL","GG-BL","XG-BL",
+]
+
+def _aggregate_sizes_from_pedido(pedido: Pedido) -> dict[str, int]:
+    """
+    Soma quantidades por tamanho a partir das personalizações.
+    Se 'quantidade' vier vazia, conta como 1.
+    """
+    c = Counter()
+    for it in pedido.itens.all():
+        for pers in it.personalizacoes.all():
+            tam = (pers.tamanho_camisa or "").strip().upper()
+            if not tam:
+                continue
+            qtd = int(pers.quantidade or 1)
+            c[tam] += qtd
+    return dict(c)
+
 @login_required
 def pedido_orcamento(request, pk):
-    p = get_object_or_404(Pedido.objects.select_related("cliente", "empresa"), pk=pk)
+    p = get_object_or_404(
+        Pedido.objects
+        .select_related("cliente", "empresa")
+        .prefetch_related("itens__variacao__produto", "itens__personalizacoes"),
+        pk=pk
+    )
     itens = p.itens.select_related("variacao__produto")
 
+    # ---- totais financeiros
     subtotal = itens.aggregate(
         t=Coalesce(Sum(LINE_TOTAL, output_field=Money), ZERO_MONEY)
     )["t"] or Decimal("0.00")
@@ -1212,6 +1344,15 @@ def pedido_orcamento(request, pk):
     val_acr  = (subtotal * (acr_pct  / Decimal("100"))).quantize(Decimal("0.01"))
     total    = (subtotal - val_desc + val_acr).quantize(Decimal("0.01"))
 
+    # ---- grade por tamanho
+    global_map   = _aggregate_sizes_from_pedido(p)      # { tamanho: qtd }
+    global_total = sum(global_map.values()) if global_map else 0
+
+    # SOMENTE tamanhos com quantidade > 0
+    active_official = [s for s in SIZE_ORDER if global_map.get(s, 0) > 0]
+    active_extras   = sorted([s for s,v in global_map.items() if s not in SIZE_ORDER and v > 0])
+    size_cols       = active_official + active_extras  # ordem final a mostrar
+
     return render(request, "camisas/orcamento.html", {
         "pedido": p,
         "empresa": p.empresa,
@@ -1221,6 +1362,11 @@ def pedido_orcamento(request, pk):
         "val_desc": val_desc,
         "val_acr": val_acr,
         "total": total,
+
+        # >>> dados da grade
+        "size_cols": size_cols,      # só tamanhos com qtd > 0 (oficiais + extras)
+        "global_map": global_map,    # somas por tamanho
+        "global_total": global_total,
     })
 
 @login_required
@@ -1830,86 +1976,276 @@ def clientes_home(request):
         "filtro": {"ini": ini, "fim": fim},
     })
 
+SIZE_ALIAS = {
+    # Mapeia nomenclaturas vindas da PersonalizacaoItem -> nomenclatura das variações
+    # Ajuste livre se o texto das suas variações for diferente
+    "PPB": "PP-BL", "PB": "P-BL", "MB": "M-BL",
+    "GB": "G-BL", "GGB": "GG-BL", "XGGB": "XG-BL",
+    "XGG": "XG",   # se você usa XGG na personalização e XG na variação
+}
+def _norm_size(s: str) -> str:
+    s = (s or "").strip().upper()
+    return SIZE_ALIAS.get(s, s)
+
+SIZE_ORDER = [
+    "PP","P","M","G","GG","XG",
+    "PP-BL","P-BL","M-BL","G-BL","GG-BL","XG-BL",
+    "PPB","PB","MB","GB","GGB","XGGB",
+]
+
+def _order_sizes(counter: Counter) -> OrderedDict:
+    """Ordena pelos tamanhos oficiais; o que não estiver na lista vai para o final."""
+    od = OrderedDict()
+    for s in SIZE_ORDER:
+        if counter.get(s):
+            od[s] = int(counter[s])
+    for k, v in counter.items():
+        if k not in od:
+            od[k] = int(v)
+    return od
+
+def _count_for_item(it) -> Counter:
+    """
+    Soma tamanhos vindos de:
+      - PersonalizacaoItem (tamanho_camisa; quantidade default=1)
+      - ColetaPedido.pessoas (cada pessoa = 1 no tamanho)
+      - ColetaPedido.payload no modo SIMPLES: dict {tam: qtd}
+    """
+    c = Counter()
+
+    # Personalizacoes vinculadas ao item
+    for p in it.personalizacoes.all():
+        tam = (p.tamanho_camisa or "").strip().upper()
+        if not tam:
+            continue
+        qtd = int(p.quantidade or 1)
+        c[tam] += qtd
+
+    # Coletas vinculadas ao item
+    for col in it.coletas.all():
+        # Pessoas (cada linha conta 1)
+        for pes in col.pessoas.all():
+            tam = (pes.tamanho or "").strip().upper()
+            if tam:
+                c[tam] += 1
+
+        # Modo simples com payload tipo { "P": 10, "M": 12, ... }
+        try:
+            if col.modo == "SIMPLES" and isinstance(col.payload, dict):
+                for k, v in col.payload.items():
+                    tam = (str(k) or "").strip().upper()
+                    qtd = int(v or 0)
+                    if tam and qtd > 0:
+                        c[tam] += qtd
+        except Exception:
+            pass
+
+    return c
+
+def _aggregate_sizes_from_items(itens) -> dict[str, int]:
+    """
+    Recebe iterável de ItemPedido (com personalizacoes e coletas/pessoas prefetch)
+    e retorna {'PP': 10, 'P': 12, ...}.
+    """
+    c = Counter()
+    for it in itens:
+        c += _count_for_item(it)
+    # devolve dict "cru"; quem precisar ordenado usa _order_sizes
+    return dict(c)
 @login_required
 @transaction.atomic
 def pedido_gerar_remessa(request, pk):
+    """
+    GET  -> mostra distribuição por tamanho (personalizações/coletas) agrupada por produto.
+    POST -> gera remessas a partir das personalizações/coletas (por produto), com fallback na qtd do item.
+    """
     pedido = get_object_or_404(
-        Pedido.objects.select_related("empresa", "cliente"),
+        Pedido.objects.select_related("empresa", "cliente").prefetch_related(
+            Prefetch(
+                "itens",
+                queryset=ItemPedido.objects
+                    .select_related("variacao", "variacao__produto")
+                    .prefetch_related(
+                        "personalizacoes",
+                        Prefetch("coletas", queryset=ColetaPedido.objects.prefetch_related("pessoas"))
+                    )
+            )
+        ),
         pk=pk
     )
 
+    # ---------- GET ----------
     if request.method == "GET":
+        # agrupa por produto e monta preview com mapa ordenado
+        itens_por_produto = defaultdict(list)
+        for it in pedido.itens.all():
+            if it.variacao_id:
+                itens_por_produto[it.variacao.produto].append(it)
+
+        preview = []
+        for produto, itens in itens_por_produto.items():
+            counter = Counter()
+            for it in itens:
+                counter += _count_for_item(it)
+
+            mapa = _order_sizes(counter)
+            total = sum(mapa.values())
+
+            preview.append({
+                "produto": produto,
+                "mapa": mapa,   # OrderedDict { "P": 10, "M": 12, ... }
+                "total": total,
+            })
+
+        preview.sort(key=lambda r: r["produto"].nome.lower())
+
         costureiras = Costureira.objects.filter(ativo=True).order_by("nome")
         produtos = Produto.objects.filter(empresa=pedido.empresa, ativo=True).order_by("nome")
         return render(request, "camisas/pedido_gerar_remessa.html", {
             "pedido": pedido,
             "costureiras": costureiras,
             "produtos": produtos,
-            "remessa_tipos": Remessa.TIPO,  # <- o template espera isso
+            "remessa_tipos": Remessa.TIPO,
+            "preview": preview,  # 👈 o template que te passei usa 'preview'
         })
 
-    # POST
+    # ---------- POST ----------
     costureira_id = request.POST.get("costureira")
     tipo_req = (request.POST.get("tipo") or "").strip()
     produto_id = request.POST.get("produto") or None
 
     costureira = get_object_or_404(Costureira, pk=costureira_id)
 
-    # valida 'tipo' nas choices
     tipos_validos = {val for (val, _label) in Remessa.TIPO}
     tipo = tipo_req if tipo_req in tipos_validos else next(iter(tipos_validos))
 
-    produto = Produto.objects.filter(pk=produto_id).first() if produto_id else None
-
-    itens_qs = (
-        pedido.itens
-        .select_related("variacao", "variacao__produto")
-        .all()
-    )
-
-    if not itens_qs.exists():
+    itens_qs = list(pedido.itens.all())
+    if not itens_qs:
         messages.warning(request, "Este pedido não possui itens para gerar remessa.")
         return redirect("camisas:pedido_detail", pedido.pk)
 
-    # cria a remessa (cabeçalho)
-    remessa = Remessa.objects.create(
-        empresa=pedido.empresa,
-        costureira=costureira,
-        tipo=tipo,
-        produto=produto,
-        kg_enviados=Decimal("0"),
-        observacao=f"Gerada a partir do Pedido #{pedido.pk}",
-    )
+    # ===== CASO 1: produto específico =====
+    if produto_id:
+        produto = get_object_or_404(Produto, pk=produto_id, ativo=True)
+        itens_do_produto = [it for it in itens_qs if it.variacao and it.variacao.produto_id == produto.id]
 
-    # cria itens (somente com quantidade > 0)
-    bulk = []
+        size_map = _aggregate_sizes_from_items(itens_do_produto)  # inclui personalizações + coletas
+
+        remessa = Remessa.objects.create(
+            empresa=pedido.empresa,
+            costureira=costureira,
+            tipo=tipo,
+            produto=produto,
+            kg_enviados=Decimal("0"),
+            observacao=f"Gerada a partir do Pedido #{pedido.pk}",
+        )
+
+        bulk = []
+        for var in produto.variacoes.all():
+            var_size = (getattr(var, "tipo", "") or "").strip().upper()
+            qtd_prev = Decimal(size_map.get(var_size, 0))
+            if qtd_prev > 0:
+                bulk.append(RemessaItem(
+                    remessa=remessa,
+                    variacao=var,
+                    qtd_prevista=qtd_prev,
+                    preco_unit=Decimal("0"),
+                ))
+
+        # fallback: se nada das personalizações/coletas, usa as quantidades do item
+        if not bulk:
+            for it in itens_do_produto:
+                if it.quantidade and it.quantidade > 0:
+                    bulk.append(RemessaItem(
+                        remessa=remessa,
+                        variacao=it.variacao,
+                        qtd_prevista=it.quantidade,
+                        preco_unit=Decimal("0"),
+                    ))
+
+        if not bulk:
+            messages.warning(request, "Não foi possível determinar quantidades para este produto.")
+            remessa.delete()
+            return redirect("camisas:pedido_detail", pedido.pk)
+
+        RemessaItem.objects.bulk_create(bulk)
+        messages.success(request, f"Remessa #{remessa.pk} criada (por tamanhos das personalizações/coletas) para {produto.nome}.")
+        return redirect("camisas:remessa_detail", remessa.pk)
+
+    # ===== CASO 2: sem produto -> 1 remessa por produto do pedido =====
+    itens_por_produto = defaultdict(list)
     for it in itens_qs:
-        if it.quantidade and it.quantidade > 0:
-            bulk.append(RemessaItem(
-                remessa=remessa,
-                variacao=it.variacao,       # <== instância VariacaoProduto correta
-                qtd_prevista=it.quantidade,
-                preco_unit=Decimal("0"),    # 0 => deixa preço padrão ser aplicado no recebimento
-            ))
+        if it.variacao and it.variacao.produto_id:
+            itens_por_produto[it.variacao.produto].append(it)
 
-    if not bulk:
-        messages.warning(request, "Nenhum item com quantidade > 0 para gerar na remessa.")
-        remessa.delete()
+    if not itens_por_produto:
+        messages.warning(request, "Itens do pedido sem produto associado não podem gerar remessa por tamanho.")
         return redirect("camisas:pedido_detail", pedido.pk)
 
-    RemessaItem.objects.bulk_create(bulk)
+    remessas_criadas = []
 
-    messages.success(
-        request,
-        f"Remessa #{remessa.pk} criada a partir do pedido #{pedido.pk}."
-    )
-    return redirect("camisas:remessa_detail", remessa.pk)
+    for produto, itens_do_produto in itens_por_produto.items():
+        size_map = _aggregate_sizes_from_items(itens_do_produto)
+
+        remessa = Remessa.objects.create(
+            empresa=pedido.empresa,
+            costureira=costureira,
+            tipo=tipo,
+            produto=produto,
+            kg_enviados=Decimal("0"),
+            observacao=f"Gerada a partir do Pedido #{pedido.pk}",
+        )
+
+        bulk = []
+        for var in produto.variacoes.all():
+            var_size = (getattr(var, "tipo", "") or "").strip().upper()
+            qtd_prev = Decimal(size_map.get(var_size, 0))
+            if qtd_prev > 0:
+                bulk.append(RemessaItem(
+                    remessa=remessa,
+                    variacao=var,
+                    qtd_prevista=qtd_prev,
+                    preco_unit=Decimal("0"),
+                ))
+
+        # fallback (sem dados de personalização/coleta)
+        if not bulk:
+            for it in itens_do_produto:
+                if it.quantidade and it.quantidade > 0:
+                    bulk.append(RemessaItem(
+                        remessa=remessa,
+                        variacao=it.variacao,
+                        qtd_prevista=it.quantidade,
+                        preco_unit=Decimal("0"),
+                    ))
+
+        if bulk:
+            RemessaItem.objects.bulk_create(bulk)
+            remessas_criadas.append(remessa)
+        else:
+            remessa.delete()
+
+    if not remessas_criadas:
+        messages.warning(request, "Nenhuma remessa foi gerada: não foram encontradas quantidades válidas.")
+        return redirect("camisas:pedido_detail", pedido.pk)
+
+    if len(remessas_criadas) == 1:
+        r = remessas_criadas[0]
+        messages.success(request, f"Remessa #{r.pk} criada (por tamanhos das personalizações/coletas) a partir do pedido #{pedido.pk}.")
+        return redirect("camisas:remessa_detail", r.pk)
+
+    messages.success(request, f"{len(remessas_criadas)} remessas criadas (uma por produto) a partir do pedido #{pedido.pk}.")
+    return redirect("camisas:remessa_list")
+
 
 from decimal import Decimal, ROUND_HALF_UP
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.urls import reverse
+from collections import Counter, OrderedDict, defaultdict
+from django.core.serializers.json import DjangoJSONEncoder
+
 
 from .models import Pedido
 try:
@@ -3256,24 +3592,391 @@ def pedido_registrar_pagamento(request, pk):
 def kanban_pedidos(request):
     """
     Mostra todos os pedidos organizados em colunas do Kanban.
+    Envia para o template uma lista 'etapas' com {key, label, pedidos}.
     """
-    colunas = {k: [] for k, _ in Pedido.ETAPA_PRODUCAO}
-    pedidos = Pedido.objects.select_related("cliente").order_by("data_entrega", "id")
-    for p in pedidos:
-        colunas[p.etapa_producao].append(p)
+    # Carrega pedidos com cliente e ordena (ajuste se quiser outra ordenação)
+    pedidos = (
+        Pedido.objects
+        .select_related("cliente")
+        .order_by("data_entrega", "id")
+    )
 
-    return render(request, "camisas/kanban.html", {"colunas": colunas, "Pedido": Pedido})
+    # Agrupa por etapa
+    bucket = defaultdict(list)
+    for p in pedidos:
+        bucket[p.etapa_producao].append(p)
+
+    # Estrutura amigável ao template (evita filtro custom)
+    etapas = [
+        {"key": key, "label": label, "pedidos": bucket.get(key, [])}
+        for key, label in Pedido.ETAPA_PRODUCAO
+    ]
+
+    return render(request, "camisas/kanban.html", {"etapas": etapas})
 
 
 @login_required
+@require_POST
 def mudar_etapa_pedido(request, pk, etapa):
     """
-    Move o pedido para a próxima/qualquer etapa do Kanban.
+    Move o pedido para a etapa solicitada (via POST).
     """
-    pedido = get_object_or_404(Pedido, pk=pk)
-    if etapa not in dict(Pedido.ETAPA_PRODUCAO):
-        return redirect("camisas:kanban")
+    etapas_validas = dict(Pedido.ETAPA_PRODUCAO)
+    if etapa not in etapas_validas:
+        messages.error(request, "Etapa inválida.")
+        return redirect(reverse("camisas:kanban_pedidos"))
 
+    pedido = get_object_or_404(Pedido, pk=pk)
     pedido.etapa_producao = etapa
     pedido.save(update_fields=["etapa_producao"])
-    return redirect("camisas:kanban")
+
+    messages.success(request, f"Pedido #{pedido.pk} movido para: {etapas_validas[etapa]}.")
+    return redirect(request.META.get("HTTP_REFERER") or reverse("camisas:kanban_pedidos"))
+
+import re
+from django.db.models import Prefetch
+from collections import Counter, OrderedDict
+SIZE_ORDER = [
+    "PP","P","M","G","GG","XG",
+    "PP-BL","P-BL","M-BL","G-BL","GG-BL","XG-BL",
+    "PPB","PB","MB","GB","GGB","XGGB",
+    "DIVERSOS"
+]
+
+def _order_sizes(counter: Counter) -> OrderedDict:
+    """Ordena pelos tamanhos oficiais; o que não estiver na lista vai para o final."""
+    od = OrderedDict()
+    for s in SIZE_ORDER:
+        if counter.get(s):
+            od[s] = counter[s]
+    for k, v in counter.items():
+        if k not in od:
+            od[k] = v
+    return od
+
+def _aggregate_sizes_for_item_only_personalizacao(item: ItemPedido) -> OrderedDict:
+    """
+    Soma APENAS PersonalizacaoItem:
+      - usa p.tamanho_camisa (upper/strip) -> 'DIVERSOS' se vazio
+      - usa p.quantidade; se vazio, conta 1
+    """
+    c = Counter()
+    for p in item.personalizacoes.all():
+        size = (p.tamanho_camisa or "").upper().strip() or "DIVERSOS"
+        q = int(p.quantidade) if p.quantidade else 1
+        c[size] += q
+    return _order_sizes(c)
+
+@login_required
+def pedido_termo_recebimento(request, pk: int):
+    pedido = get_object_or_404(
+        Pedido.objects.select_related("empresa", "cliente").prefetch_related(
+            Prefetch(
+                "itens",
+                queryset=ItemPedido.objects
+                    .select_related("variacao", "variacao__produto")
+                    .prefetch_related("personalizacoes")
+            ),
+            # opcional: já traz as assinaturas junto
+            Prefetch(
+                "esignatures",
+                queryset=ESignature.objects.filter(role="empresa").order_by("-signed_at"),
+                to_attr="esigns_empresa"
+            ),
+        ),
+        pk=pk
+    )
+
+    itens_bloco = []
+    total_geral = 0
+    resumo_geral_counter = Counter()
+
+    for it in pedido.itens.all():
+        mapa = _aggregate_sizes_for_item_only_personalizacao(it)
+        qtd_total_item = sum(mapa.values())
+        total_geral += qtd_total_item
+        resumo_geral_counter.update(mapa)
+
+        itens_bloco.append({
+            "produto": (
+                it.variacao.produto.nome
+                if getattr(it, "variacao_id", None) and it.variacao.produto_id
+                else str(it.variacao or "—")
+            ),
+            "variacao": it.variacao.tipo if getattr(it, "variacao_id", None) else "",
+            "mapa": mapa,                     # OrderedDict {tam: qtd}
+            "qtd_total_item": qtd_total_item, # soma do item
+            "obs": it.outra_info or "",
+        })
+
+    resumo_geral = _order_sizes(resumo_geral_counter)
+
+    # pega a última assinatura digital da EMPRESA para este pedido (via to_attr, se presente)
+    empresa_esign = None
+    if hasattr(pedido, "esigns_empresa") and pedido.esigns_empresa:
+        empresa_esign = pedido.esigns_empresa[0]
+    else:
+        empresa_esign = pedido.esignatures.filter(role="empresa").order_by("-signed_at").first()
+
+    ctx = {
+        "pedido": pedido,
+        "empresa": pedido.empresa,
+        "cliente": pedido.cliente,
+        "itens_bloco": itens_bloco,
+        "resumo_geral": resumo_geral,
+        "total_geral": total_geral,
+        "hoje": date.today(),
+        "empresa_esign": empresa_esign,  # <-- novo: usado no template
+    }
+    return render(request, "camisas/termo_recebimento_cliente.html", ctx)
+
+# --- helpers de tamanho ---
+SIZE_ORDER = [
+    "2 ANOS","4 ANOS","6 ANOS","8 ANOS","10 ANOS","12 ANOS",
+    "PP","P","M","G","GG","XG",
+    "PP-BL","P-BL","M-BL","G-BL","GG-BL","XG-BL",
+    "PPB","PB","MB","GB","GGB","XGGB",
+]
+SIZE_ALIASES = {
+    "1A": "1 ANO", "1ANO": "1 ANO", "1 ANO": "1 ANO",
+    "2A": "2 ANOS", "2ANOS": "2 ANOS", "2 ANO": "2 ANOS",
+    "4A": "4 ANOS", "4ANOS": "4 ANOS", "4 ANO": "4 ANOS",
+    "6A": "6 ANOS", "6ANOS": "6 ANOS", "6 ANO": "6 ANOS",
+    "8A": "8 ANOS", "8ANOS": "8 ANOS", "8 ANO": "8 ANOS",
+    "10A": "10 ANOS", "10ANOS": "10 ANOS", "10 ANO": "10 ANOS",
+    "12A": "12 ANOS", "12ANOS": "12 ANOS", "12 ANO": "12 ANOS",
+    "PP BABY LOOK": "PP-BL", "P BABY LOOK": "P-BL", "M BABY LOOK": "M-BL",
+    "G BABY LOOK": "G-BL", "GG BABY LOOK": "GG-BL", "XG BABY LOOK": "XG-BL",
+}
+def _norm_size(s: str) -> str:
+    s = (s or "").strip().upper()
+    if not s:
+        return ""
+    if s in SIZE_ALIASES:
+        return SIZE_ALIASES[s]
+    if s.endswith(" BABY LOOK"):
+        base = s.replace(" BABY LOOK", "")
+        return f"{base}-BL"
+    return s
+
+def _order_sizes(counter: Counter) -> OrderedDict:
+    od = OrderedDict()
+    for s in SIZE_ORDER:
+        q = counter.get(s) or 0
+        if q:
+            od[s] = q
+    for k, v in counter.items():
+        if v and k not in od:
+            od[k] = v
+    return od
+
+def _safe_int(v, default=1):
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        n = default
+    return n if n > 0 else 0
+
+@login_required
+def pedido_arte_tamanhos(request, pk):
+    pedido = get_object_or_404(
+        Pedido.objects.select_related("empresa", "cliente").prefetch_related(
+            "itens__personalizacoes",
+            "itens__variacao__produto",
+            Prefetch("itens__coletas", queryset=ColetaPedido.objects.prefetch_related("pessoas")),
+        ),
+        pk=pk
+    )
+
+    global_counter = Counter()
+    pessoas = []
+
+    for it in pedido.itens.all():
+        produto = getattr(getattr(it, "variacao", None), "produto", None)
+        prod_nome = getattr(produto, "nome", "—")
+
+        # 1) Personalizações: somatório por tamanho + lista nominal
+        for p in it.personalizacoes.all():
+            tam = _norm_size(getattr(p, "tamanho_camisa", ""))
+            qtd = _safe_int(getattr(p, "quantidade", None), default=1)
+
+            if tam and qtd:
+                global_counter[tam] += qtd
+
+            nome = (getattr(p, "nome", "") or "").strip()
+            numero = (getattr(p, "numero", "") or "").strip()
+            if nome or numero or tam:
+                pessoas.append({
+                    "nome": nome or "—",
+                    "numero": numero or "",
+                    "tamanho": tam or "",
+                    "qtd": qtd if (tam or nome or numero) else None,
+                    "produto": prod_nome,
+                })
+
+        # 2) Coletas: +1 por pessoa com tamanho
+        for col in it.coletas.all():
+            for pe in col.pessoas.all():
+                tam = _norm_size(getattr(pe, "tamanho", ""))
+                if tam:
+                    global_counter[tam] += 1
+                nome = (getattr(pe, "nome", "") or "").strip()
+                numero = (getattr(pe, "numero", "") or "").strip()
+                if nome or numero or tam:
+                    pessoas.append({
+                        "nome": nome or "—",
+                        "numero": numero or "",
+                        "tamanho": tam or "",
+                        "qtd": 1 if tam else None,
+                        "produto": prod_nome,
+                    })
+
+        # >>> Sem fallback/saldo: NÃO somamos mais nada pelo ItemPedido.quantidade
+
+    # ordenação e totais
+    global_map_od = _order_sizes(global_counter)
+    size_cols = list(global_map_od.keys())
+    global_total = sum(global_map_od.values()) or 0
+
+    pos = {s: i for i, s in enumerate(size_cols)}
+    pessoas.sort(key=lambda r: (pos.get(r["tamanho"], 9999), r["nome"] or ""))
+
+    context = {
+        "pedido": pedido,
+        "size_cols": size_cols,
+        "global_map": dict(global_map_od),
+        "global_total": global_total,
+        "pessoas": pessoas,
+        "size_cols_json": mark_safe(json.dumps(size_cols, ensure_ascii=False)),
+        "global_map_json": mark_safe(json.dumps(dict(global_map_od), ensure_ascii=False)),
+    }
+    return render(request, "camisas/pedido_arte_tamanhos.html", context)
+def is_designer(u):
+    return u.is_staff or (u.groups.filter(name__iexact="designers").exists())
+
+from .models import ArteDesign, Pedido
+from .forms import ArteDesignForm
+
+
+# camisas/views.py
+
+@login_required
+@user_passes_test(is_designer)
+def designer_dashboard(request):
+    q = (request.GET.get("q") or "").strip()
+    empresa_id = request.GET.get("empresa") or ""
+
+    itens = (ArteDesign.objects
+             .select_related("empresa", "cliente", "pedido")
+             # 👇 mais antigas primeiro
+             .order_by("criado_em", "id"))
+
+    if empresa_id:
+        itens = itens.filter(empresa_id=empresa_id)
+
+    if q:
+        itens = itens.filter(
+            Q(titulo__icontains=q) |
+            Q(descricao__icontains=q) |
+            Q(cliente__nome__icontains=q) |
+            Q(cliente__telefone__icontains=q)
+        )
+
+    STATUS_LABELS = dict(getattr(ArteDesign, "STATUS", [
+        ("PEND", "Pendente"),
+        ("WORK", "Em criação"),
+        ("WAIT", "Aguardando"),
+        ("APRV", "Aprovada"),
+        ("REJ",  "Reprovada"),
+        ("IMP",  "Para impressão"),
+    ]))
+
+    total_arte = itens.count()
+    total_pendentes = itens.filter(status="PEND").count()
+    empresas = Empresa.objects.order_by("nome_fantasia")
+
+    return render(request, "camisas/designer_dashboard.html", {
+        "itens": itens,
+        "STATUS_LABELS": STATUS_LABELS,
+        "empresas": empresas,
+        "empresa_id": empresa_id,
+        "q": q,
+        "total_arte": total_arte,
+        "total_pendentes": total_pendentes,
+    })
+
+
+@login_required
+@user_passes_test(is_designer)
+def arte_create(request):
+    if request.method == "POST":
+        form = ArteDesignForm(request.POST, request.FILES)
+        if form.is_valid():
+            arte = form.save(commit=False)
+            arte.criado_por = request.user
+            arte.save()  # sinal cria o pedido
+            if form.cleaned_data.get("publicar_no_pedido"):
+                arte.publicar_no_pedido()
+            messages.success(request, f"Arte #{arte.pk} criada. Pedido #{arte.pedido_id} vinculado.")
+            return redirect("camisas:designer_dashboard")
+    else:
+        form = ArteDesignForm()
+    return render(request, "camisas/arte_form.html", {"form": form})
+
+@login_required
+@user_passes_test(is_designer)
+def arte_edit(request, pk):
+    arte = get_object_or_404(ArteDesign, pk=pk)
+    if request.method == "POST":
+        form = ArteDesignForm(request.POST, request.FILES, instance=arte)
+        if form.is_valid():
+            arte = form.save()
+            if form.cleaned_data.get("publicar_no_pedido"):
+                arte.publicar_no_pedido()
+            messages.success(request, "Arte atualizada.")
+            return redirect("camisas:designer_dashboard")
+    else:
+        form = ArteDesignForm(instance=arte)
+    return render(request, "camisas/arte_form.html", {"form": form, "arte": arte})
+
+@login_required
+@user_passes_test(is_designer)
+@require_POST
+def arte_set_status(request, pk):
+    arte = get_object_or_404(ArteDesign, pk=pk)
+    new = (request.POST.get("status") or "").upper()
+    allowed = {k for k, _ in ArteDesign.STATUS}
+    if new in allowed:
+        arte.status = new
+        arte.save(update_fields=["status", "atualizado_em"])
+        if new in ("APRV", "IMP"):
+            arte.publicar_no_pedido()
+        messages.success(request, f"Status atualizado para {arte.get_status_display()}.")
+    return redirect("camisas:designer_dashboard")
+
+@login_required
+@user_passes_test(is_designer)
+@require_POST
+def arte_publicar(request, pk):
+    arte = get_object_or_404(ArteDesign, pk=pk)
+    ok = arte.publicar_no_pedido()
+    if ok:
+        messages.success(request, f"Arte publicada no Pedido #{arte.pedido_id}.")
+    else:
+        messages.warning(request, "Não foi possível publicar (verifique se a arte tem arquivo e Pedido vinculado).")
+    return redirect("camisas:designer_dashboard")
+
+@login_required
+def designer_home(request):
+    artes = (ArteDesign.objects
+             .select_related("empresa", "cliente", "pedido")
+             .order_by("-criado_em")[:50])
+
+    pendentes = [a for a in artes if getattr(a, "status", "") in ("PEND", "pendente", "PENDENTE")]
+    ctx = {
+        "artes": artes,
+        "pendentes": pendentes,
+        "qtd_total": len(artes),
+        "qtd_pendentes": len(pendentes),
+    }
+    return render(request, "camisas/designer_home.html", ctx)

@@ -45,6 +45,18 @@
 
 <main class="container py-5">
   <div class="row g-4 justify-content-center shortcut">
+
+    <!-- Painel do Designer (NOVO) -->
+    <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+      <a href="{% url 'camisas:designer_home' %}">
+        <div class="card-clean h-100">
+          <div class="icon">🎨</div>
+          <div class="title">Painel do Designer</div>
+          <div class="mini">Artes, pendências, status</div>
+        </div>
+      </a>
+    </div>
+
     <div class="col-12 col-sm-6 col-md-4 col-lg-3">
       <a href="{% url 'camisas:pedidos_home' %}">
         <div class="card-clean h-100">
@@ -104,6 +116,7 @@
         </div>
       </a>
     </div>
+
   </div>
 </main>
 

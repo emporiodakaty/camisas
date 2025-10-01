@@ -34,6 +34,10 @@
     .tag{ background:#fff; border:1px solid #e5e7eb; border-radius:999px; padding:.2rem .55rem; font-weight:700; font-size:.78rem; }
 
     .field-error{ font-size:.75rem; color:#dc2626; margin-top:.2rem; }
+
+    /* Novo: linha de resumo das personalizações sob o select */
+    .person-mini{ margin-top:.25rem; font-size:.78rem; color:#475569; }
+    .person-mini .rest{ font-weight:700; }
   </style>
 </head>
 <body>
@@ -60,7 +64,6 @@
     <div class="alert alert-{{ message.tags }}">{{ message }}</div>
   {% endfor %}
 
-  <!-- Erros do form principal -->
   {% if form.non_field_errors %}
     <div class="alert alert-danger">
       {% for e in form.non_field_errors %}<div>• {{ e }}</div>{% endfor %}
@@ -71,7 +74,17 @@
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
       <h1 class="h5 m-0">Nova Remessa</h1>
-      <div class="mini">Informe empresa, costureira e tipo; depois defina os itens. Se o <strong>Preço</strong> ficar em branco/zero, usaremos o preço padrão da costureira para o tipo. O <strong>Total</strong> da linha e o <strong>Total previsto (R$)</strong> são calculados automaticamente.</div>
+      <div class="mini">
+        Informe empresa, costureira e tipo; depois defina os itens. Se o <strong>Preço</strong> ficar em branco/zero,
+        usaremos o preço padrão da costureira para o tipo. O <strong>Total</strong> da linha e o <strong>Total previsto (R$)</strong>
+        são calculados automaticamente.
+      </div>
+      {% if size_seed_json and size_seed_json|length > 2 %}
+        <div class="mt-2">
+          <span class="badge badge-soft">Sugestão por tamanhos carregada</span>
+          <span class="mini ms-2">As quantidades serão preenchidas com base nas personalizações do pedido.</span>
+        </div>
+      {% endif %}
     </div>
     <div class="d-flex gap-2">
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'camisas:remessa_list' %}">Voltar</a>
@@ -120,7 +133,6 @@
 
       {{ formset.management_form }}
 
-      <!-- Erros globais do formset -->
       {% if formset.non_form_errors %}
         <div class="alert alert-danger mb-2">
           {% for e in formset.non_form_errors %}<div>• {{ e }}</div>{% endfor %}
@@ -131,7 +143,7 @@
         <table class="table align-middle">
           <thead>
             <tr>
-              <th style="min-width:260px">Variação (Produto / Tamanho / Cor)</th>
+              <th style="min-width:260px">Item / <span class="text-muted">Personalizações</span></th>
               <th style="width:120px">Tamanho</th>
               <th style="width:160px">Cor</th>
               <th style="width:140px">Previsto (peças)</th>
@@ -147,6 +159,11 @@
                   {{ row.variacao }}
                   {% for hf in row.hidden_fields %}{{ hf }}{% endfor %}
                   {% for e in row.variacao.errors %}<div class="field-error">{{ e }}</div>{% endfor %}
+                  <!-- Novo: mini resumo de personalização para a linha -->
+                  <div class="person-mini">
+                    Personalização:
+                    <span class="person-summary">—</span>
+                  </div>
                 </td>
                 <td class="fw-semibold tam-cell">
                   {% if row.instance.pk %}{{ row.instance.variacao.tamanho }}{% else %}—{% endif %}
@@ -171,7 +188,6 @@
                 </td>
               </tr>
 
-              <!-- Erros não relacionados a campos (da linha) -->
               {% if row.non_field_errors %}
                 <tr>
                   <td colspan="7">
@@ -195,9 +211,9 @@
         </table>
       </div>
 
-      <!-- Totais por tamanho (Previsto) -->
+      <!-- Totais por tamanho (Previsto / Meta) -->
       <div class="mt-2">
-        <div class="mini mb-1">Totais por tamanho (Previsto)</div>
+        <div class="mini mb-1">Totais por tamanho (Previsto / Meta)</div>
         <div id="totBySize" class="totais-grade">
           {% for t in tamanhos %}
             <div class="tot-card" data-size="{{ t }}">
@@ -208,7 +224,10 @@
         </div>
       </div>
 
-      <div class="mini mt-2 text-muted">Ao escolher a variação, o <strong>Tamanho</strong> e a <strong>Cor</strong> da linha são preenchidos automaticamente. O sistema soma os previstos por tamanho e calcula os totais em R$.</div>
+      <div class="mini mt-2 text-muted">
+        Ao escolher a variação, o <strong>Tamanho</strong> e a <strong>Cor</strong> da linha são preenchidos automaticamente.
+        Se houver uma <em>meta por tamanho</em> (derivada das personalizações), a quantidade será sugerida para completar o restante do tamanho.
+      </div>
     </div>
 
     <div class="d-flex justify-content-end gap-2">
@@ -218,7 +237,10 @@
     <!-- Template de linha vazia -->
     <template id="tmplRow">
       <tr class="row-item">
-        <td>__VARIACAO__ __HIDDENS__</td>
+        <td>
+          __VARIACAO__ __HIDDENS__
+          <div class="person-mini">Personalização: <span class="person-summary">—</span></div>
+        </td>
         <td class="fw-semibold tam-cell">—</td>
         <td class="cor-cell">—</td>
         <td class="w-80 previsto-cell">__QTD__</td>
@@ -242,9 +264,10 @@
   </form>
 </main>
 
-<!-- injeta o mapa de preços base { costureira_id: {TIPO: valor} } -->
+<!-- Mapa de preços { costureira_id: {TIPO: valor} } -->
 <script>
-  const COST_MAP = {{ cost_map_json|safe }};
+  const COST_MAP  = {{ cost_map_json|safe }};
+  const SIZE_SEED = {{ size_seed_json|safe|default:"{}" }};
 </script>
 
 <script>
@@ -255,7 +278,9 @@
   const totPrev = q('#totPrev');
   const totPrevMoney = q('#totPrevMoney');
   const totWrap = q('#totBySize');
-  const SIZES = ['PP','P','M','G','GG','XGG','PPB','PB','MB','GB','GGB','XGGB'];
+
+  // tamanhos vindos do backend (mantém a ordem visual)
+  const SIZES = [{% for t in tamanhos %}'{{ t }}'{% if not forloop.last %},{% endif %}{% endfor %}];
 
   const selTipo = q('#id_tipo');
   const selCost = q('#id_costureira');
@@ -301,6 +326,63 @@
     }
   }
 
+  // ---- SUGESTÃO POR TAMANHO (SIZE_SEED) ----
+  const SEED = Object.assign({}, SIZE_SEED || {}); // { 'P': 10, 'M': 12, ... }
+
+  function assignedBySize(excludeTr=null){
+    const map = {};
+    SIZES.forEach(s=> map[s] = 0);
+    qa('tr.row-item', body).forEach(tr=>{
+      if (tr.style.display === 'none') return;
+      if (excludeTr && tr === excludeTr) return;
+      const size = (tr.dataset.size||'').toUpperCase();
+      const qty  = toNumber(tr.querySelector('input[name$="-qtd_prevista"]')?.value);
+      if (size && (size in map)) map[size] += qty;
+    });
+    return map;
+  }
+
+  function updatePersonSummary(tr){
+    const size = (tr.dataset.size||'').toUpperCase();
+    const span = tr.querySelector('.person-summary');
+    if (!span){ return; }
+    if (!size){
+      span.textContent = '—';
+      return;
+    }
+    const seed = toNumber(SEED[size] || 0);
+    if (!seed){
+      span.textContent = `${size}: —`;
+      return;
+    }
+    const others = assignedBySize(excludeTr=tr)[size] || 0;
+    const inpQtd = tr.querySelector('input[name$="-qtd_prevista"]');
+    const selfQ  = toNumber(inpQtd && inpQtd.value);
+    const usado  = others + selfQ;
+    const rest   = Math.max(0, seed - others); // restante disponível p/ esta linha (sem contar o próprio valor)
+    span.innerHTML = `${size}: meta ${toIntBR(seed)} • restante <span class="rest">${toIntBR(rest)}</span>`;
+  }
+
+  function suggestForRow(tr){
+    const size = (tr.dataset.size||'').toUpperCase();
+    if (!size) return;
+    const inpQtd = tr.querySelector('input[name$="-qtd_prevista"]');
+    if (!inpQtd) return;
+
+    // se já tem valor > 0, respeita o que o usuário digitou
+    if (toNumber(inpQtd.value) > 0) { updatePersonSummary(tr); return; }
+
+    const seed  = toNumber(SEED[size] || 0);
+    if (!seed) { updatePersonSummary(tr); return; }
+
+    const others = assignedBySize(excludeTr=tr)[size] || 0;
+    const left   = Math.max(0, seed - others);
+    if (left > 0){
+      inpQtd.value = String(left);
+    }
+    updatePersonSummary(tr);
+  }
+
   function bindRow(tr){
     const sel = tr.querySelector('select');
     const inpQtd = tr.querySelector('input[name$="-qtd_prevista"]');
@@ -315,14 +397,24 @@
         q('.cor-cell', tr).textContent = cor || '—';
         tr.dataset.size = size || '';
         if (inpPre) ensurePrice(inpPre);
+
+        // preencher automaticamente com a sobra do tamanho
+        suggestForRow(tr);
         recalc();
       });
+
+      // inicial
       const opt = sel.options[sel.selectedIndex];
       if (opt){
         const {size, cor} = extractSizeAndColor(opt.text);
         q('.tam-cell', tr).textContent = size || '—';
         q('.cor-cell', tr).textContent = cor || '—';
         tr.dataset.size = size || '';
+
+        // se veio sem qtd, tenta sugerir
+        suggestForRow(tr);
+      } else {
+        updatePersonSummary(tr);
       }
     }
 
@@ -331,6 +423,7 @@
       inpQtd.setAttribute('min','0'); inpQtd.setAttribute('step','1');
       inpQtd.addEventListener('input', ()=>{
         if (inpPre) ensurePrice(inpPre);
+        updatePersonSummary(tr);
         recalc();
       });
     }
@@ -376,6 +469,9 @@
 
       const size = (tr.dataset.size||'').toUpperCase();
       if (mapSizes[size] !== undefined) mapSizes[size] += qty;
+
+      // mantém o mini-resumo atualizado
+      updatePersonSummary(tr);
     });
 
     if (totPrev) totPrev.textContent = toIntBR(totPecas);
@@ -383,8 +479,12 @@
 
     if (totWrap){
       SIZES.forEach(s=>{
+        const seed = toNumber(SEED[s] || 0);
         const el = totWrap.querySelector(`.tot-card[data-size="${s}"] .v`);
-        if (el) el.textContent = toIntBR(mapSizes[s]);
+        if (el){
+          // mostra "previsto / meta" quando houver seed
+          el.textContent = seed ? `${toIntBR(mapSizes[s])} / ${toIntBR(seed)}` : `${toIntBR(mapSizes[s])}`;
+        }
       });
     }
   }
@@ -406,6 +506,10 @@
     totalInp.value = idx + 1;
     const newRow = body.lastElementChild;
     bindRow(newRow);
+
+    // tenta sugerir assim que a linha nasce (se a variação já estiver selecionada)
+    suggestForRow(newRow);
+
     const inpPre = newRow.querySelector('input[name$="-preco_unit"]');
     if (inpPre) ensurePrice(inpPre);
     recalc();
@@ -422,12 +526,15 @@
         const inpPre = tr.querySelector('input[name$="-preco_unit"]');
         if (!inpPre) return;
         if (!toNumber(inpPre.value)) ensurePrice(inpPre);
+        updatePersonSummary(tr);
       });
       recalc();
     });
   });
 
+  // bind inicial
   qa('tr.row-item', body).forEach(bindRow);
+  qa('tr.row-item', body).forEach(suggestForRow); // tenta preencher pelo seed
   qa('tr.row-item input[name$="-preco_unit"]', body).forEach(ensurePrice);
   recalc();
 

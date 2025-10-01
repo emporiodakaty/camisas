@@ -1,0 +1,147 @@
+{% load dict_extras %}
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <title>Painel do Designer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+
+  <style>
+    :root{
+      --ink:#0f172a; --muted:#64748b; --g1:#111827; --g2:#111827;
+      --base-font:14px;
+    }
+    html{font-size:var(--base-font);} body{background:#f6f8fb;color:var(--ink);}
+    .nav-pro{background:linear-gradient(90deg,var(--g1),var(--g2));}
+    .card{border:none;border-radius:.9rem;box-shadow:0 10px 24px rgba(17,24,39,.08);}
+    .mini{font-size:.85rem;color:var(--muted)}
+    .thumb{
+      width:72px;height:72px;object-fit:contain;background:#fff;border:1px solid #e5e7eb;border-radius:.5rem;
+    }
+    .badge-status{font-weight:600}
+    .title{font-weight:700}
+    .table > :not(caption) > * > *{ vertical-align:middle; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{% url 'camisas:home' %}">EMPÓRIO DA KATY</a>
+    <div class="ms-auto d-flex gap-2">
+      <a href="{% url 'camisas:arte_create' %}" class="btn btn-sm btn-warning">+ Nova Arte</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container py-3">
+
+  <!-- Filtros / resumo -->
+  <form class="card p-3 mb-3" method="get" action="{% url 'camisas:designer_dashboard' %}">
+    <div class="d-flex flex-wrap gap-2">
+      <div class="flex-grow-1">
+        <input type="search" class="form-control" name="q" value="{{ q }}" placeholder="Buscar por título, descrição, cliente ou telefone...">
+      </div>
+      <div style="width:260px">
+        <select name="empresa" class="form-select">
+          <option value="">Todas as empresas</option>
+          {% for e in empresas %}
+            <option value="{{ e.id }}" {% if empresa_id|stringformat:'s' == e.id|stringformat:'s' %}selected{% endif %}>{{ e.nome_fantasia }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <button class="btn btn-primary">Filtrar</button>
+      </div>
+    </div>
+    <div class="mini mt-2">
+      Total: <strong>{{ total_arte|default:"0" }}</strong>
+      • Pendentes: <strong>{{ total_pendentes|default:"0" }}</strong>
+    </div>
+  </form>
+
+  <!-- Lista (tabela) -->
+  <div class="card p-2">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead class="table-light">
+          <tr>
+            <th style="width:84px">Arte</th>
+            <th>Título</th>
+            <th>Cliente</th>
+            <th>Empresa</th>
+            <th>Pedido</th>
+            <th style="width:220px">Status</th>
+            <th style="width:160px">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in itens %}
+            <tr>
+              <td>
+                {% if a.has_file %}
+                  <img class="thumb" src="{{ a.file_url }}" alt="Arte">
+                {% else %}
+                  <span class="text-muted mini">Sem imagem</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="title text-truncate" style="max-width:320px" title="{{ a.titulo }}">{{ a.titulo }}</div>
+                <div class="mini">{{ a.criado_em|date:"d/m/Y H:i" }}</div>
+              </td>
+              <td>
+                {% if a.cliente %}
+                  {% if a.cliente.nome %}{{ a.cliente.nome }}
+                  {% elif a.cliente.telefone %}{{ a.cliente.telefone }}
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td>{{ a.empresa.nome_fantasia }}</td>
+              <td>
+                {% if a.pedido_id %}
+                  <a href="{% url 'camisas:pedido_detail' a.pedido_id %}">#{{ a.pedido_id }}</a>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <span class="badge text-bg-secondary badge-status">{{ a.get_status_display }}</span>
+                  <form method="post" action="{% url 'camisas:arte_set_status' a.pk %}" class="d-flex gap-1 flex-grow-1">
+                    {% csrf_token %}
+                    <select name="status" class="form-select form-select-sm">
+                      {% for k,v in a.STATUS %}
+                        <option value="{{ k }}" {% if a.status == k %}selected{% endif %}>{{ v }}</option>
+                      {% endfor %}
+                    </select>
+                    <button class="btn btn-sm btn-outline-primary" type="submit">OK</button>
+                  </form>
+                </div>
+              </td>
+              <td>
+                <div class="d-flex gap-1">
+                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'camisas:arte_edit' a.pk %}">Editar</a>
+                  <form method="post" action="{% url 'camisas:arte_publicar' a.pk %}" class="m-0">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-success" type="submit">Publicar</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="7" class="text-center text-muted py-4">Nenhuma arte encontrada.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

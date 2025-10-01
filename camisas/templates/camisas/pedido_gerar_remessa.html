@@ -13,6 +13,9 @@
     .mini{font-size:.85rem;color:var(--muted)}
     .table thead th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#64748b;border-top:0}
     .form-control:focus,.form-select:focus{box-shadow:0 0 0 .25rem var(--ring);border-color:#93c5fd}
+    .chip{display:inline-block;background:#fff;border:1px solid #e5e7eb;border-radius:999px;padding:.2rem .55rem;margin:.12rem .35rem .12rem 0;font-weight:700;font-size:.78rem}
+    .totals-box{background:#fff;border:1px solid #e5e7eb;border-radius:.75rem;padding:.6rem .75rem}
+    .totals-box .chip{margin:.2rem .35rem .2rem 0}
   </style>
 </head>
 <body>
@@ -26,24 +29,31 @@
 </nav>
 
 <main class="container py-4">
-  {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
+  {% for message in messages %}
+    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+  {% endfor %}
 
   <div class="card p-3 bg-white mb-3">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
       <div>
         <h1 class="h5 mb-1">Gerar remessa a partir do Pedido #{{ pedido.pk }}</h1>
         <div class="mini">
-          Empresa: {{ pedido.empresa.nome_fantasia }} • Cliente: {{ pedido.cliente.nome }} •
+          Empresa: {{ pedido.empresa.nome_fantasia|default:"—" }} •
+          Cliente: {{ pedido.cliente.nome|default:pedido.cliente|default:"—" }} •
           Criado em: {{ pedido.criado_em|date:"d/m/Y H:i" }}
         </div>
       </div>
-      <span class="badge {% if pedido.status == 'FAT' %}text-bg-success{% elif pedido.status == 'PROD' %}text-bg-primary{% elif pedido.status == 'PEN' %}text-bg-warning{% elif pedido.status == 'ORC' %}text-bg-secondary{% else %}text-bg-dark{% endif %}">
+      <span class="badge
+        {% if pedido.status == 'FAT' %}text-bg-success
+        {% elif pedido.status == 'PROD' %}text-bg-primary
+        {% elif pedido.status == 'PEN' %}text-bg-warning
+        {% elif pedido.status == 'ORC' %}text-bg-secondary
+        {% else %}text-bg-dark{% endif %}">
         {{ pedido.get_status_display }}
       </span>
     </div>
   </div>
 
-  <!-- Formulário -->
   <div class="card p-3 bg-white mb-3">
     <form method="post" class="row g-3">
       {% csrf_token %}
@@ -65,7 +75,6 @@
               <option value="{{ val }}">{{ label }}</option>
             {% endfor %}
           {% else %}
-            <!-- fallback caso não venha do contexto -->
             <option value="CORTE">Corte</option>
             <option value="COSTURA">Costura</option>
             <option value="CORRECAO">Correção</option>
@@ -84,26 +93,57 @@
       </div>
 
       <div class="col-12">
-        <div class="mini text-uppercase mb-1">Itens que serão incluídos na remessa</div>
+        <div class="mini text-uppercase mb-1">Distribuição por tamanho (personalizações/coletas por item do pedido)</div>
         <div class="table-responsive">
           <table class="table align-middle mb-0">
             <thead>
-              <tr><th>Produto</th><th>Variação</th><th class="text-end">Qtd</th></tr>
+              <tr>
+                <th style="min-width:220px">Produto</th>
+                <th>Distribuição</th>
+                <th class="text-end" style="width:140px">Total</th>
+              </tr>
             </thead>
             <tbody>
-              {% for it in pedido.itens.all %}
+              {% if preview %}
+                {% for row in preview %}
+                  <tr>
+                    <td class="fw-semibold">
+                      {% if row.produto %}{{ row.produto }}{% else %}—{% endif %}
+                    </td>
+                    <td>
+                      {% if row.mapa %}
+                        {% for tam, qtd in row.mapa.items %}
+                          <span class="chip">{{ tam }} × {{ qtd }}</span>
+                        {% endfor %}
+                      {% else %}
+                        <span class="text-muted">— sem dados de tamanho • usará a quantidade do item</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-end">{{ row.total|default:"0" }}</td>
+                  </tr>
+                {% endfor %}
+              {% else %}
                 <tr>
-                  <td class="fw-semibold">{{ it.variacao.produto.nome }}</td>
-                  <td>{{ it.variacao.tamanho }}/{{ it.variacao.cor }}</td>
-                  <td class="text-end">{{ it.quantidade }}</td>
+                  <td colspan="3" class="text-center text-muted py-4">
+                    Não há itens com personalizações registradas neste pedido.
+                  </td>
                 </tr>
-              {% empty %}
-                <tr><td colspan="3" class="text-center text-muted py-4">Este pedido não possui itens.</td></tr>
-              {% endfor %}
+              {% endif %}
             </tbody>
           </table>
         </div>
       </div>
+
+      {% if totais %}
+      <div class="col-12">
+        <div class="mini text-uppercase mb-1">Total geral por tamanho</div>
+        <div class="totals-box">
+          {% for tam, qtd in totais.items %}
+            <span class="chip">{{ tam }} × {{ qtd }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
 
       <div class="col-12 d-flex gap-2">
         <a href="{% url 'camisas:pedido_detail' pedido.pk %}" class="btn btn-outline-secondary">Cancelar</a>
@@ -112,9 +152,9 @@
     </form>
   </div>
 
-  <!-- Observação -->
   <p class="mini">
-    A remessa será criada com os itens do pedido. Preços unitários dos serviços podem ser definidos/ajustados no recebimento.
+    A remessa será criada usando as <strong>personalizações/coletas</strong> (quantidades por tamanho) dos itens do pedido.
+    Onde não houver correspondência de tamanho na variação do produto, será usada a <em>quantidade do item</em> como fallback.
   </p>
 </main>
 
